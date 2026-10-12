@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Espaço Bre Melo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Montserrat:wght@400;500;600&display=swap" rel="stylesheet">
+  <?!= include('Styles'); ?>
+</head>
+<body>
+  <header class="topo">
+    <div class="marca">
+      <img class="marca-logo" src="<?!= include('Logo'); ?>" alt="Logo Espaço Bre Melo">
+      <div>
+        <div class="marca-sub">E S P A Ç O</div>
+        <div class="marca-nome">Bre Melo</div>
+      </div>
+    </div>
+    <nav class="abas" role="tablist">
+      <button class="aba ativa" data-aba="agenda" role="tab">Agenda</button>
+      <button class="aba" data-aba="clientes" role="tab">Clientes</button>
+      <button class="aba" data-aba="exportar" role="tab">Exportar</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- AGENDA -->
+    <section id="tela-agenda" class="tela ativa">
+      <div class="barra">
+        <div class="nav-semana">
+          <button class="btn-icone" id="sem-ant" aria-label="Semana anterior">‹</button>
+          <button class="btn-sec" id="sem-hoje">Hoje</button>
+          <button class="btn-icone" id="sem-prox" aria-label="Próxima semana">›</button>
+          <h2 id="sem-titulo"></h2>
+        </div>
+        <button class="btn" id="novo-agendamento">+ Novo agendamento</button>
+      </div>
+      <div class="dias-chips" id="dias-chips"></div>
+      <div class="grade" id="grade"></div>
+      <p class="dica">Toque em um horário livre para agendar. Cada atendimento reserva 2 horas.</p>
+    </section>
+
+    <!-- CLIENTES -->
+    <section id="tela-clientes" class="tela">
+      <div class="barra">
+        <input type="search" id="busca" class="campo busca" placeholder="Buscar por nome ou telefone…">
+        <button class="btn" id="nova-cliente">+ Nova cliente</button>
+      </div>
+      <div id="aniversariantes" class="aniversariantes"></div>
+      <div id="lista-clientes" class="lista-clientes"></div>
+    </section>
+
+    <!-- EXPORTAR -->
+    <section id="tela-exportar" class="tela">
+      <div class="cartoes">
+        <div class="cartao">
+          <h3>Planilha Excel</h3>
+          <p>Baixa um arquivo .xlsx com duas abas: todas as clientes e todos os agendamentos.</p>
+          <button class="btn" id="baixar-excel">Baixar Excel</button>
+          <a class="link" id="abrir-planilha" target="_blank" rel="noopener">Abrir a planilha Google com os dados</a>
+        </div>
+        <div class="cartao">
+          <h3>Agenda Google</h3>
+          <p>Todo agendamento é criado automaticamente na agenda <strong id="nome-agenda">do espaço</strong>,
+            com o nome da cliente, telefone e procedimento. Cancelamentos e mudanças de horário também são atualizados.</p>
+          <button class="btn-sec" id="sincronizar">Sincronizar agendamentos com a Agenda Google</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- MODAL CLIENTE -->
+  <dialog id="modal-cliente" class="modal">
+    <form id="form-cliente" method="dialog">
+      <h3 id="titulo-cliente">Nova cliente</h3>
+      <input type="hidden" name="id">
+      <label>Nome completo<input class="campo" name="nome" required autocomplete="off"></label>
+      <label>Telefone<input class="campo" name="telefone" type="tel" placeholder="(00) 00000-0000" autocomplete="off"></label>
+      <div class="linha2">
+        <label>Data de nascimento<input class="campo" name="nascimento" type="date"></label>
+        <label>Quantidade de sessões<input class="campo" name="sessoes" type="number" min="0" step="1" value="0"></label>
+      </div>
+      <label>Observações<textarea class="campo" name="observacoes" rows="2"></textarea></label>
+      <div class="acoes">
+        <button type="button" class="btn-perigo" id="excluir-cliente">Excluir</button>
+        <span class="espaco"></span>
+        <button type="button" class="btn-sec" data-fechar>Cancelar</button>
+        <button type="submit" class="btn">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- MODAL AGENDAMENTO -->
+  <dialog id="modal-agendamento" class="modal">
+    <form id="form-agendamento" method="dialog">
+      <h3 id="titulo-agendamento">Novo agendamento</h3>
+      <input type="hidden" name="id">
+      <label>Cliente
+        <div class="com-botao">
+          <select class="campo" name="clienteId" required></select>
+          <button type="button" class="btn-sec" id="cliente-rapida" title="Cadastrar nova cliente">+ Nova</button>
+        </div>
+      </label>
+      <div class="linha2">
+        <label>Data<input class="campo" name="data" type="date" required></label>
+        <label>Horário<select class="campo" name="inicio" required></select></label>
+      </div>
+      <p class="info-horario" id="info-horario"></p>
+      <label>Procedimento<input class="campo" name="procedimento" list="procedimentos" autocomplete="off"></label>
+      <label id="campo-status">Status
+        <select class="campo" name="status">
+          <option>Agendado</option>
+          <option>Concluído</option>
+          <option>Cancelado</option>
+        </select>
+      </label>
+      <label>Observações<textarea class="campo" name="observacoes" rows="2"></textarea></label>
+      <div class="acoes">
+        <button type="button" class="btn-perigo" id="excluir-agendamento">Excluir</button>
+        <span class="espaco"></span>
+        <button type="button" class="btn-sec" data-fechar>Cancelar</button>
+        <button type="submit" class="btn">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <datalist id="procedimentos">
+    <option>Design de sobrancelhas tradicional</option>
+    <option>Design de sobrancelhas com henna</option>
+    <option>Escova + finalização</option>
+    <option>Escova progressiva</option>
+    <option>Botox capilar</option>
+    <option>Banho de hidratação</option>
+    <option>Coloração</option>
+    <option>Cutilagem + esmaltação</option>
+    <option>Unhas de gel</option>
+    <option>Blindagem</option>
+    <option>Esmaltação em gel</option>
+    <option>Cílios tufinho</option>
+    <option>Epilação com cera</option>
+    <option>Dia de princesa</option>
+    <option>Make</option>
+    <option>Dia da noiva</option>
+  </datalist>
+
+  <div id="aviso" class="aviso" role="status"></div>
+  <div id="carregando" class="carregando"><span></span></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <?!= include('App'); ?>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "name": "espaco-bremello",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cadastro de clientes e agenda do Espaço Bre Melo (Google Apps Script)",
+  "scripts": {
+    "local": "node dev/servidor-local.js",
+    "test": "node dev/testes.js",
+    "push": "clasp push"
+  }
+}

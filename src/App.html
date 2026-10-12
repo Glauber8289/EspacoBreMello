@@ -1,0 +1,415 @@
+<script>
+(function () {
+  'use strict';
+
+  var SLOT_PX = 26;            // altura de 30 minutos na grade
+  var DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+  var MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+  var estado = {
+    clientes: [],
+    agendamentos: [],
+    config: { DURACAO_MIN: 120, HORA_ABERTURA: '08:00', HORA_FECHAMENTO: '21:00', INTERVALO_MIN: 30 },
+    semana: inicioSemana(new Date()),
+    diaSel: isoData(new Date()),
+    voltarParaAgendamento: null
+  };
+
+  var $ = function (s) { return document.querySelector(s); };
+  var $$ = function (s) { return Array.prototype.slice.call(document.querySelectorAll(s)); };
+
+  /* ---------------- Servidor ---------------- */
+
+  var pendentes = 0;
+  function servidor(fn) {
+    var args = Array.prototype.slice.call(arguments, 1);
+    pendentes++;
+    $('#carregando').classList.add('ativo');
+    return new Promise(function (ok, falha) {
+      var r = google.script.run
+        .withSuccessHandler(function (v) { fim(); ok(v); })
+        .withFailureHandler(function (e) { fim(); falha(e); });
+      r[fn].apply(r, args);
+    });
+    function fim() { if (--pendentes === 0) $('#carregando').classList.remove('ativo'); }
+  }
+
+  function recarregar() {
+    return servidor('carregarTudo').then(function (d) {
+      estado.clientes = d.clientes;
+      estado.agendamentos = d.agendamentos;
+      estado.config = d.config;
+      if (d.agenda) $('#nome-agenda').textContent = '"' + d.agenda + '"';
+      if (d.planilhaUrl) $('#abrir-planilha').href = d.planilhaUrl;
+      else $('#abrir-planilha').style.display = 'none';
+      renderTudo();
+    }).catch(erro);
+  }
+
+  /* ---------------- Datas ---------------- */
+
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function isoData(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function deIso(s) { var p = s.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }
+  function somaDias(d, n) { var x = new Date(d); x.setDate(x.getDate() + n); return x; }
+  function inicioSemana(d) { var x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); return somaDias(x, -x.getDay()); }
+  function minutos(h) { var p = h.split(':'); return +p[0] * 60 + +p[1]; }
+  function hora(m) { return pad(Math.floor(m / 60)) + ':' + pad(m % 60); }
+  function dataBr(iso) { if (!iso) return ''; var p = iso.split('-'); return p[2] + '/' + p[1] + '/' + p[0]; }
+  function idade(iso) {
+    if (!iso) return null;
+    var n = deIso(iso), h = new Date(), a = h.getFullYear() - n.getFullYear();
+    if (h.getMonth() < n.getMonth() || (h.getMonth() === n.getMonth() && h.getDate() < n.getDate())) a--;
+    return a;
+  }
+
+  /* ---------------- Render ---------------- */
+
+  function renderTudo() { renderAgenda(); renderClientes(); }
+
+  function ativos() {
+    return estado.agendamentos.filter(function (a) { return a.status !== 'Cancelado'; });
+  }
+
+  function renderAgenda() {
+    var cfg = estado.config;
+    var abre = minutos(cfg.HORA_ABERTURA), fecha = minutos(cfg.HORA_FECHAMENTO);
+    var nSlots = (fecha - abre) / 30;
+    var altura = nSlots * SLOT_PX;
+    var hoje = isoData(new Date());
+    var dias = [];
+    for (var i = 0; i < 7; i++) dias.push(somaDias(estado.semana, i));
+    var isos = dias.map(isoData);
+    if (isos.indexOf(estado.diaSel) < 0) estado.diaSel = isos.indexOf(hoje) >= 0 ? hoje : isos[1];
+
+    var f = dias[0], l = dias[6];
+    $('#sem-titulo').textContent = f.getMonth() === l.getMonth()
+      ? f.getDate() + ' – ' + l.getDate() + ' de ' + MESES[l.getMonth()] + ' ' + l.getFullYear()
+      : f.getDate() + ' ' + MESES[f.getMonth()] + ' – ' + l.getDate() + ' ' + MESES[l.getMonth()] + ' ' + l.getFullYear();
+
+    var porDia = {};
+    ativos().forEach(function (a) { (porDia[a.data] = porDia[a.data] || []).push(a); });
+
+    // chips (celular)
+    $('#dias-chips').innerHTML = dias.map(function (d, i) {
+      var iso = isos[i], n = (porDia[iso] || []).length;
+      return '<button class="chip' + (iso === estado.diaSel ? ' sel' : '') + '" data-dia="' + iso + '">' +
+        DIAS[d.getDay()] + '<b>' + d.getDate() + '</b><div class="pontos">' + '•'.repeat(Math.min(n, 4)) + '</div></button>';
+    }).join('');
+
+    var html = '<div class="grade-cab-vazia"></div>';
+    dias.forEach(function (d, i) {
+      var iso = isos[i];
+      html += '<div class="grade-cab' + (iso === hoje ? ' hoje' : '') + (iso === estado.diaSel ? ' sel' : '') + '">' +
+        '<div class="dsem">' + DIAS[d.getDay()] + '</div><div class="dnum">' + d.getDate() + '</div></div>';
+    });
+    html += '<div class="grade-horas" style="height:' + altura + 'px">';
+    for (var m = abre; m < fecha; m += 60) {
+      html += '<div style="top:' + (m === abre ? 9 : (m - abre) / 30 * SLOT_PX) + 'px">' + hora(m) + '</div>';
+    }
+    html += '</div>';
+    dias.forEach(function (d, i) {
+      var iso = isos[i];
+      html += '<div class="grade-dia' + (iso === hoje ? ' hoje' : '') + (iso === estado.diaSel ? ' sel' : '') +
+        '" data-dia="' + iso + '" style="height:' + altura + 'px">';
+      for (var s = 1; s < nSlots; s++) {
+        html += '<div class="slot' + (s % 2 === 0 ? ' cheia' : '') + '" style="top:' + (s * SLOT_PX) + 'px"></div>';
+      }
+      (porDia[iso] || []).forEach(function (a) {
+        var top = (minutos(a.inicio) - abre) / 30 * SLOT_PX;
+        var h = (minutos(a.fim) - minutos(a.inicio)) / 30 * SLOT_PX - 3;
+        html += '<div class="bloco' + (a.status === 'Concluído' ? ' concluido' : '') + '" data-id="' + a.id +
+          '" style="top:' + (top + 1) + 'px;height:' + h + 'px">' +
+          '<strong>' + esc(a.clienteNome) + '</strong><span>' + a.inicio + ' – ' + a.fim + '</span>' +
+          (a.procedimento ? '<span>' + esc(a.procedimento) + '</span>' : '') + '</div>';
+      });
+      html += '</div>';
+    });
+    $('#grade').innerHTML = html;
+  }
+
+  function renderClientes() {
+    var termo = $('#busca').value.trim().toLowerCase();
+    var digitos = termo.replace(/\D/g, '');
+    var hoje = isoData(new Date());
+    var proximos = {};
+    ativos().filter(function (a) { return a.status === 'Agendado' && a.data >= hoje; })
+      .sort(function (a, b) { return (a.data + a.inicio).localeCompare(b.data + b.inicio); })
+      .forEach(function (a) { if (!proximos[a.clienteId]) proximos[a.clienteId] = a; });
+
+    var lista = estado.clientes.slice().sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt-BR'); })
+      .filter(function (c) {
+        if (!termo) return true;
+        return c.nome.toLowerCase().indexOf(termo) >= 0 || (digitos && c.telefone.replace(/\D/g, '').indexOf(digitos) >= 0);
+      });
+
+    $('#lista-clientes').innerHTML = lista.length ? lista.map(function (c) {
+      var id = idade(c.nascimento), tel = c.telefone.replace(/\D/g, ''), p = proximos[c.id];
+      return '<div class="cliente" data-id="' + c.id + '">' +
+        '<h4>' + esc(c.nome) + '</h4>' +
+        '<div class="dados">' + esc(c.telefone || 'Sem telefone') +
+        (c.nascimento ? ' · ' + dataBr(c.nascimento) + (id !== null ? ' (' + id + ' anos)' : '') : '') + '</div>' +
+        (p ? '<div class="proximo">Próximo: ' + dataBr(p.data) + ' às ' + p.inicio + '</div>' : '') +
+        '<div class="rodape"><span class="selo">' + c.sessoes + (c.sessoes === 1 ? ' sessão' : ' sessões') + '</span>' +
+        (tel ? '<a class="zap" target="_blank" rel="noopener" href="https://wa.me/' + (tel.length <= 11 ? '55' : '') + tel + '">WhatsApp</a>' : '') +
+        '</div></div>';
+    }).join('') : '<div class="vazio">' + (termo ? 'Nenhuma cliente encontrada.' : 'Nenhuma cliente cadastrada ainda.') + '</div>';
+
+    var mes = new Date().getMonth() + 1;
+    var aniv = estado.clientes.filter(function (c) { return c.nascimento && +c.nascimento.split('-')[1] === mes; })
+      .sort(function (a, b) { return a.nascimento.slice(8).localeCompare(b.nascimento.slice(8)); });
+    $('#aniversariantes').innerHTML = aniv.length
+      ? '<h4>Aniversariantes do mês</h4>' + aniv.map(function (c) {
+        return '<span>🎂 ' + esc(c.nome) + ' — dia ' + c.nascimento.slice(8) + '</span>';
+      }).join('')
+      : '';
+  }
+
+  /* ---------------- Modal cliente ---------------- */
+
+  function abrirCliente(c) {
+    var f = $('#form-cliente');
+    f.reset();
+    $('#titulo-cliente').textContent = c ? 'Editar cliente' : 'Nova cliente';
+    f.id.value = c ? c.id : '';
+    f.nome.value = c ? c.nome : '';
+    f.telefone.value = c ? c.telefone : '';
+    f.nascimento.value = c ? c.nascimento : '';
+    f.sessoes.value = c ? c.sessoes : 0;
+    f.observacoes.value = c ? c.observacoes : '';
+    $('#excluir-cliente').style.visibility = c ? 'visible' : 'hidden';
+    $('#modal-cliente').showModal();
+    f.nome.focus();
+  }
+
+  function salvarCliente(ev) {
+    ev.preventDefault();
+    var f = ev.target;
+    var dados = { id: f.id.value, nome: f.nome.value, telefone: f.telefone.value, nascimento: f.nascimento.value,
+      sessoes: f.sessoes.value, observacoes: f.observacoes.value };
+    travar(f, true);
+    servidor('salvarCliente', dados).then(function (c) {
+      var voltar = estado.voltarParaAgendamento;
+      estado.voltarParaAgendamento = null;
+      $('#modal-cliente').close();
+      aviso(dados.id ? 'Cliente atualizada.' : 'Cliente cadastrada.');
+      return recarregar().then(function () {
+        if (voltar) { voltar.clienteId = c.id; abrirAgendamento(voltar); }
+      });
+    }).catch(erro).then(function () { travar(f, false); });
+  }
+
+  function excluirCliente() {
+    var f = $('#form-cliente');
+    if (!confirm('Excluir a cliente ' + f.nome.value + '? Isso não pode ser desfeito.')) return;
+    servidor('excluirCliente', f.id.value).then(function () {
+      $('#modal-cliente').close();
+      aviso('Cliente excluída.');
+      return recarregar();
+    }).catch(erro);
+  }
+
+  /* ---------------- Modal agendamento ---------------- */
+
+  function abrirAgendamento(a) {
+    var f = $('#form-agendamento');
+    f.reset();
+    var editando = a && a.id;
+    $('#titulo-agendamento').textContent = editando ? 'Editar agendamento' : 'Novo agendamento';
+    var clientes = estado.clientes.slice().sort(function (x, y) { return x.nome.localeCompare(y.nome, 'pt-BR'); });
+    f.clienteId.innerHTML = '<option value="">Selecione…</option>' + clientes.map(function (c) {
+      return '<option value="' + c.id + '">' + esc(c.nome) + (c.telefone ? ' · ' + esc(c.telefone) : '') + '</option>';
+    }).join('');
+    f.id.value = editando ? a.id : '';
+    f.clienteId.value = (a && a.clienteId) || '';
+    f.data.value = (a && a.data) || estado.diaSel;
+    f.procedimento.value = (a && a.procedimento) || '';
+    f.status.value = (a && a.status) || 'Agendado';
+    f.observacoes.value = (a && a.observacoes) || '';
+    $('#campo-status').style.display = editando ? '' : 'none';
+    $('#excluir-agendamento').style.visibility = editando ? 'visible' : 'hidden';
+    preencherHorarios(a && a.inicio);
+    $('#modal-agendamento').showModal();
+  }
+
+  function preencherHorarios(escolhido) {
+    var f = $('#form-agendamento'), cfg = estado.config;
+    var atual = escolhido || f.inicio.value;
+    var dur = cfg.DURACAO_MIN, abre = minutos(cfg.HORA_ABERTURA), fecha = minutos(cfg.HORA_FECHAMENTO);
+    var ocupados = ativos().filter(function (a) { return a.data === f.data.value && a.id !== f.id.value; });
+    var opcoes = [], livres = 0;
+    for (var m = abre; m + dur <= fecha; m += cfg.INTERVALO_MIN) {
+      var conflito = ocupados.filter(function (a) { return minutos(a.inicio) < m + dur && m < minutos(a.fim); })[0];
+      if (!conflito) livres++;
+      opcoes.push('<option value="' + hora(m) + '"' + (conflito ? ' disabled' : '') + '>' + hora(m) + ' – ' + hora(m + dur) +
+        (conflito ? ' (ocupado)' : '') + '</option>');
+    }
+    if (atual && opcoes.join('').indexOf('value="' + atual + '"') < 0) {
+      opcoes.unshift('<option value="' + atual + '">' + atual + ' – ' + hora(minutos(atual) + dur) + '</option>');
+    }
+    f.inicio.innerHTML = opcoes.join('');
+    var opt = atual && f.inicio.querySelector('option[value="' + atual + '"]');
+    if (opt && !opt.disabled) f.inicio.value = atual;
+    else {
+      var primeiro = f.inicio.querySelector('option:not([disabled])');
+      f.inicio.value = primeiro ? primeiro.value : '';
+    }
+    var info = $('#info-horario');
+    info.classList.toggle('erro', livres === 0);
+    info.textContent = livres === 0 ? 'Não há horários livres nesse dia.'
+      : (atual && opt && opt.disabled ? 'O horário ' + atual + ' está ocupado; escolha outro. ' : '') +
+        livres + (livres === 1 ? ' horário livre' : ' horários livres') + ' neste dia.';
+  }
+
+  function salvarAgendamento(ev) {
+    ev.preventDefault();
+    var f = ev.target;
+    var dados = { id: f.id.value, clienteId: f.clienteId.value, data: f.data.value, inicio: f.inicio.value,
+      procedimento: f.procedimento.value, status: f.status.value, observacoes: f.observacoes.value };
+    if (!dados.inicio) return erro(new Error('Escolha um horário livre.'));
+    travar(f, true);
+    servidor('salvarAgendamento', dados).then(function (a) {
+      $('#modal-agendamento').close();
+      aviso(dados.id ? 'Agendamento atualizado.' : 'Agendado para ' + dataBr(a.data) + ' às ' + a.inicio + '.');
+      estado.diaSel = a.data;
+      estado.semana = inicioSemana(deIso(a.data));
+      return recarregar();
+    }).catch(function (e) { erro(e); recarregar().then(function () { preencherHorarios(); }); })
+      .then(function () { travar(f, false); });
+  }
+
+  function excluirAgendamento() {
+    var f = $('#form-agendamento');
+    if (!confirm('Excluir este agendamento? Ele também sai da Agenda Google.')) return;
+    servidor('excluirAgendamento', f.id.value).then(function () {
+      $('#modal-agendamento').close();
+      aviso('Agendamento excluído.');
+      return recarregar();
+    }).catch(erro);
+  }
+
+  /* ---------------- Excel ---------------- */
+
+  function baixarExcel() {
+    if (typeof XLSX === 'undefined') return erro(new Error('Não foi possível carregar o gerador de Excel. Verifique a internet.'));
+    var nomes = {};
+    estado.clientes.forEach(function (c) { nomes[c.id] = c; });
+    var clientes = estado.clientes.slice().sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt-BR'); })
+      .map(function (c) {
+        return { 'Nome': c.nome, 'Telefone': c.telefone, 'Data de nascimento': dataBr(c.nascimento),
+          'Idade': idade(c.nascimento), 'Sessões': c.sessoes, 'Observações': c.observacoes };
+      });
+    var ags = estado.agendamentos.slice().sort(function (a, b) { return (a.data + a.inicio).localeCompare(b.data + b.inicio); })
+      .map(function (a) {
+        return { 'Data': dataBr(a.data), 'Início': a.inicio, 'Fim': a.fim, 'Cliente': a.clienteNome,
+          'Telefone': (nomes[a.clienteId] || {}).telefone || '', 'Procedimento': a.procedimento,
+          'Status': a.status, 'Observações': a.observacoes };
+      });
+    var wb = XLSX.utils.book_new();
+    var w1 = XLSX.utils.json_to_sheet(clientes, { header: ['Nome', 'Telefone', 'Data de nascimento', 'Idade', 'Sessões', 'Observações'] });
+    w1['!cols'] = [{ wch: 32 }, { wch: 18 }, { wch: 18 }, { wch: 7 }, { wch: 9 }, { wch: 40 }];
+    var w2 = XLSX.utils.json_to_sheet(ags, { header: ['Data', 'Início', 'Fim', 'Cliente', 'Telefone', 'Procedimento', 'Status', 'Observações'] });
+    w2['!cols'] = [{ wch: 12 }, { wch: 8 }, { wch: 8 }, { wch: 32 }, { wch: 18 }, { wch: 30 }, { wch: 12 }, { wch: 40 }];
+    XLSX.utils.book_append_sheet(wb, w1, 'Clientes');
+    XLSX.utils.book_append_sheet(wb, w2, 'Agendamentos');
+    XLSX.writeFile(wb, 'EspacoBreMelo_' + isoData(new Date()) + '.xlsx');
+  }
+
+  function sincronizar() {
+    servidor('sincronizarAgendaGoogle').then(function (n) {
+      aviso(n + ' agendamento(s) conferido(s) na Agenda Google.');
+      return recarregar();
+    }).catch(erro);
+  }
+
+  /* ---------------- Utilidades ---------------- */
+
+  function esc(s) {
+    return String(s || '').replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function travar(f, sim) { Array.prototype.forEach.call(f.querySelectorAll('button'), function (b) { b.disabled = sim; }); }
+  var timerAviso;
+  function aviso(msg, ehErro) {
+    var el = $('#aviso');
+    el.textContent = msg;
+    el.classList.toggle('erro', !!ehErro);
+    el.classList.add('mostrar');
+    clearTimeout(timerAviso);
+    timerAviso = setTimeout(function () { el.classList.remove('mostrar'); }, ehErro ? 6000 : 3000);
+  }
+  function erro(e) {
+    var msg = (e && e.message) || String(e);
+    aviso(msg.replace(/^(Exception|Error):\s*/, ''), true);
+  }
+
+  /* ---------------- Eventos ---------------- */
+
+  $$('.aba').forEach(function (b) {
+    b.addEventListener('click', function () {
+      $$('.aba').forEach(function (x) { x.classList.toggle('ativa', x === b); });
+      $$('.tela').forEach(function (t) { t.classList.toggle('ativa', t.id === 'tela-' + b.dataset.aba); });
+    });
+  });
+  $('#sem-ant').onclick = function () { estado.semana = somaDias(estado.semana, -7); estado.diaSel = isoData(somaDias(estado.semana, 1)); renderAgenda(); };
+  $('#sem-prox').onclick = function () { estado.semana = somaDias(estado.semana, 7); estado.diaSel = isoData(somaDias(estado.semana, 1)); renderAgenda(); };
+  $('#sem-hoje').onclick = function () { estado.semana = inicioSemana(new Date()); estado.diaSel = isoData(new Date()); renderAgenda(); };
+  $('#dias-chips').addEventListener('click', function (ev) {
+    var c = ev.target.closest('.chip');
+    if (c) { estado.diaSel = c.dataset.dia; renderAgenda(); }
+  });
+  $('#grade').addEventListener('click', function (ev) {
+    var bloco = ev.target.closest('.bloco');
+    if (bloco) {
+      var a = estado.agendamentos.filter(function (x) { return x.id === bloco.dataset.id; })[0];
+      if (a) abrirAgendamento(a);
+      return;
+    }
+    var dia = ev.target.closest('.grade-dia');
+    if (!dia) return;
+    var y = ev.clientY - dia.getBoundingClientRect().top;
+    var m = minutos(estado.config.HORA_ABERTURA) + Math.floor(y / SLOT_PX) * 30;
+    estado.diaSel = dia.dataset.dia;
+    abrirAgendamento({ data: dia.dataset.dia, inicio: hora(m) });
+  });
+  $('#novo-agendamento').onclick = function () { abrirAgendamento(null); };
+  $('#nova-cliente').onclick = function () { abrirCliente(null); };
+  $('#busca').addEventListener('input', renderClientes);
+  $('#lista-clientes').addEventListener('click', function (ev) {
+    if (ev.target.closest('a')) return;
+    var card = ev.target.closest('.cliente');
+    if (!card) return;
+    abrirCliente(estado.clientes.filter(function (c) { return c.id === card.dataset.id; })[0]);
+  });
+  $('#form-cliente').addEventListener('submit', salvarCliente);
+  $('#form-agendamento').addEventListener('submit', salvarAgendamento);
+  $('#excluir-cliente').onclick = excluirCliente;
+  $('#excluir-agendamento').onclick = excluirAgendamento;
+  $('#form-agendamento').data.addEventListener('change', function () { preencherHorarios(); });
+  $('#cliente-rapida').onclick = function () {
+    var f = $('#form-agendamento');
+    estado.voltarParaAgendamento = { id: f.id.value, data: f.data.value, inicio: f.inicio.value,
+      procedimento: f.procedimento.value, status: f.status.value, observacoes: f.observacoes.value };
+    $('#modal-agendamento').close();
+    abrirCliente(null);
+  };
+  $('#modal-cliente').addEventListener('close', function () {
+    // cancelou o cadastro rápido: volta para o agendamento que estava sendo feito
+    var v = estado.voltarParaAgendamento;
+    if (v) { estado.voltarParaAgendamento = null; abrirAgendamento(v); }
+  });
+  $$('[data-fechar]').forEach(function (b) { b.onclick = function () { b.closest('dialog').close(); }; });
+  $('#baixar-excel').onclick = baixarExcel;
+  $('#sincronizar').onclick = sincronizar;
+
+  // Mantém as duas pessoas vendo os mesmos dados: recarrega ao voltar para a aba e a cada 2 minutos.
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden && !document.querySelector('dialog[open]')) recarregar();
+  });
+  setInterval(function () { if (!document.hidden && !document.querySelector('dialog[open]')) recarregar(); }, 120000);
+
+  renderAgenda();
+  recarregar();
+})();
+</script>

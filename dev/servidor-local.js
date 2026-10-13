@@ -73,6 +73,7 @@ function criarAmbiente() {
 
   var agenda = {
     getName: function () { return 'espacobremello@gmail.com'; },
+    getId: function () { return 'espacobremello@gmail.com'; },
     getEventById: function (id) { return eventos[id] || null; },
     createEvent: function (t, i, f, o) {
       var id = crypto.randomUUID() + '@google.com';
@@ -85,14 +86,14 @@ function criarAmbiente() {
     HtmlService: {},
     Logger: { log: console.log },
     PropertiesService: { getScriptProperties: function () {
-      return { getProperty: function (k) { return props[k] || null; }, setProperty: function (k, v) { props[k] = v; } };
+      return { getProperty: function (k) { return props[k] || null; }, setProperty: function (k, v) { props[k] = v; }, deleteProperty: function (k) { delete props[k]; } };
     } },
     SpreadsheetApp: {
       getActiveSpreadsheet: function () { return planilhas.ativa || (planilhas.ativa = new Planilha('planilha-local')); },
       openById: function () { return planilhas.ativa; },
       create: function () { return planilhas.ativa = new Planilha('planilha-local'); }
     },
-    CalendarApp: { getDefaultCalendar: function () { return agenda; }, getCalendarsByName: function () { return [agenda]; } },
+    CalendarApp: { getDefaultCalendar: function () { return agenda; }, getCalendarById: function (id) { return id === agenda.getId() ? agenda : null; }, getCalendarsByName: function () { return [agenda]; } },
     LockService: { getScriptLock: function () { return { tryLock: function () { return true; }, releaseLock: function () {} }; } },
     Session: { getScriptTimeZone: function () { return 'America/Sao_Paulo'; } },
     Utilities: {

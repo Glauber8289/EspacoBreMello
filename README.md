@@ -44,7 +44,18 @@ No celular, abra o link no navegador logado na conta do espaço e use **Adiciona
 
 ### Quem pode acessar
 
-Com *Somente eu*, só quem estiver logado na **conta Google do espaço** abre o site. É o jeito mais simples e seguro: vocês dois entram com essa conta no navegador (pode ser junto com a conta pessoal, trocando pelo ícone de perfil).
+Há duas formas:
+
+**A) Todos usam a conta do espaço** (padrão, mais simples). Na implantação: *Executar como*: **Eu**, *Quem pode acessar*: **Somente eu**. Quem estiver logado na conta Google do espaço abre o site.
+
+**B) Cada um usa a própria conta Google.** O acesso é controlado pelo compartilhamento do Google: só quem tem acesso à planilha e à agenda do espaço consegue ver e mexer nos dados.
+1. Rode **configurar** uma vez com a conta do espaço (ele guarda qual agenda usar).
+2. Compartilhe a **planilha** (botão *Compartilhar*) com os e-mails pessoais, como **Editor**.
+3. Em [calendar.google.com](https://calendar.google.com), na conta do espaço: *Configurações da agenda → Compartilhar com pessoas específicas* → adicione os mesmos e-mails com **Fazer alterações nos eventos**.
+4. Na implantação: *Executar como*: **Usuário que acessa o app da Web**, *Quem pode acessar*: **Qualquer pessoa com conta Google**.
+5. No primeiro acesso, cada pessoa autoriza o app com a própria conta.
+
+Nunca use *Executar como: Eu* junto com *Qualquer pessoa com conta Google*: nesse caso qualquer pessoa com o link veria todas as clientes.
 
 ### Agenda Google
 

@@ -45,8 +45,13 @@ function include(nome) {
  */
 function configurar() {
   garantirEstrutura_();
+  PropertiesService.getScriptProperties().deleteProperty('AGENDA_ID');
   var agenda = obterAgenda_();
-  Logger.log('Planilha pronta. Agenda usada: ' + agenda.getName());
+  // Guarda a agenda do espaço para que todos que usam o site gravem nela,
+  // mesmo quando o site roda com a conta pessoal de quem acessa.
+  PropertiesService.getScriptProperties().setProperty('AGENDA_ID', agenda.getId());
+  Logger.log('Planilha pronta: ' + planilha_().getUrl());
+  Logger.log('Agenda usada: ' + agenda.getName() + ' (' + agenda.getId() + ')');
 }
 
 /* ------------------------------------------------------------------ */
@@ -209,6 +214,12 @@ function sincronizarAgendaGoogle() {
 /* ------------------------------------------------------------------ */
 
 function obterAgenda_() {
+  var id = PropertiesService.getScriptProperties().getProperty('AGENDA_ID');
+  if (id) {
+    var agenda = CalendarApp.getCalendarById(id);
+    if (!agenda) throw new Error('Sua conta não tem acesso à agenda do espaço. Peça para compartilharem a agenda com você.');
+    return agenda;
+  }
   if (CONFIG.NOME_AGENDA) {
     var lista = CalendarApp.getCalendarsByName(CONFIG.NOME_AGENDA);
     if (lista.length) return lista[0];
@@ -264,7 +275,13 @@ function apagarEvento_(eventoId) {
 function planilha_() {
   var props = PropertiesService.getScriptProperties();
   var id = props.getProperty('PLANILHA_ID');
-  if (id) return SpreadsheetApp.openById(id);
+  if (id) {
+    try {
+      return SpreadsheetApp.openById(id);
+    } catch (e) {
+      throw new Error('Sua conta não tem acesso à planilha do espaço. Peça para compartilharem a planilha com você.');
+    }
+  }
   var ativa = SpreadsheetApp.getActiveSpreadsheet();
   if (ativa) {
     props.setProperty('PLANILHA_ID', ativa.getId());

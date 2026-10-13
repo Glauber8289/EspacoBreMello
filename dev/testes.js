@@ -29,7 +29,7 @@ falha(function () { amb.salvarAgendamento({ clienteId: bia.id, data: D, inicio: 
 falha(function () { amb.salvarAgendamento({ clienteId: bia.id, data: D, inicio: '08:30' }); }, 'Horário ocupado');
 var a2 = amb.salvarAgendamento({ clienteId: bia.id, data: D, inicio: '12:00' }); // encosta, não conflita
 var a3 = amb.salvarAgendamento({ clienteId: bia.id, data: D, inicio: '08:00' });
-falha(function () { amb.salvarAgendamento({ clienteId: bia.id, data: D, inicio: '19:30' }); }, 'entre');
+falha(function () { amb.salvarAgendamento({ clienteId: bia.id, data: D, inicio: '20:30' }); }, 'entre');
 falha(function () { amb.salvarAgendamento({ clienteId: 'nao-existe', data: D, inicio: '15:00' }); }, 'Selecione');
 
 // editar sem conflitar consigo mesmo e movendo o evento

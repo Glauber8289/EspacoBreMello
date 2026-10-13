@@ -8,7 +8,7 @@
 var CONFIG = {
   DURACAO_MIN: 120,          // cada agendamento reserva 2 horas
   HORA_ABERTURA: '08:00',
-  HORA_FECHAMENTO: '21:00',  // último horário possível termina às 21:00
+  HORA_FECHAMENTO: '22:00',  // último atendimento termina às 22:00 (começa às 20:00)
   INTERVALO_MIN: 30,         // horários oferecidos a cada 30 minutos
   NOME_AGENDA: ''            // vazio = agenda principal da conta; ou o nome de outra agenda
 };

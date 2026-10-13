@@ -24,7 +24,7 @@ dev/
   testes.js          testes das regras (conflito de horário, sessões, agenda)
 ```
 
-Horário de funcionamento, duração e intervalo dos horários ficam no topo de `src/Code.gs` (`CONFIG`). Por padrão: das 08:00 às 23:00 (último atendimento começa às 21:00), atendimentos de 2 horas, horários a cada 30 minutos.
+Horário de funcionamento, duração e intervalo dos horários ficam no topo de `src/Code.gs` (`CONFIG`). Por padrão: das 06:00 à meia-noite (último atendimento começa às 22:00; escreva `24:00`, não `00:00`), atendimentos de 2 horas, horários a cada 30 minutos.
 
 ## Instalação (uma vez, na conta Google do espaço)
 

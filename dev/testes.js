@@ -29,7 +29,7 @@ falha(function () { amb.salvarAgendamento({ clienteId: bia.id, data: D, inicio: 
 falha(function () { amb.salvarAgendamento({ clienteId: bia.id, data: D, inicio: '08:30' }); }, 'Horário ocupado');
 var a2 = amb.salvarAgendamento({ clienteId: bia.id, data: D, inicio: '12:00' }); // encosta, não conflita
 var a3 = amb.salvarAgendamento({ clienteId: bia.id, data: D, inicio: '08:00' });
-falha(function () { amb.salvarAgendamento({ clienteId: bia.id, data: D, inicio: '21:30' }); }, 'entre');
+falha(function () { amb.salvarAgendamento({ clienteId: bia.id, data: D, inicio: '22:30' }); }, 'entre');
 falha(function () { amb.salvarAgendamento({ clienteId: 'nao-existe', data: D, inicio: '15:00' }); }, 'Selecione');
 
 // editar sem conflitar consigo mesmo e movendo o evento
@@ -69,3 +69,10 @@ assert.ok(amb.sincronizarAgendaGoogle() >= 1);
 assert.ok(amb.__eventos[amb.carregarTudo().agendamentos[0].eventoId]);
 
 console.log('Todos os testes passaram ✓');
+// último horário: 22:00 até meia-noite
+var cliente = amb.carregarTudo().clientes[0];
+var tarde = amb.salvarAgendamento({ clienteId: cliente.id, data: D, inicio: '22:00' });
+assert.strictEqual(tarde.fim, '24:00');
+var evTarde = amb.__eventos[tarde.eventoId];
+assert.strictEqual(evTarde.f.getHours(), 0); assert.strictEqual(evTarde.f.getDate(), evTarde.i.getDate() + 1 > 28 ? evTarde.f.getDate() : evTarde.i.getDate() + 1);
+console.log('Horário até meia-noite ✓');

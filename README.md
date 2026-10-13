@@ -65,6 +65,12 @@ Se preferir uma agenda separada só para atendimentos, coloque o nome dela em `N
 
 O botão **Sincronizar** na aba Exportar recria na Agenda Google qualquer agendamento futuro cujo evento tenha sido apagado por engano.
 
+## Endereço curto
+
+A pasta `docs/` publica, pelo GitHub Pages, o endereço **https://glauber8289.github.io/EspacoBreMello/**, que redireciona para o link `/exec` do Apps Script. Se um dia fizer uma *nova implantação* (em vez de editar a existente), troque o link em `docs/index.html`.
+
+Para ativar: no GitHub, **Settings → Pages → Build and deployment → Source: Deploy from a branch → Branch: main / docs → Save**.
+
 ## Atualizar o site depois de uma mudança no código
 
 Cole os arquivos alterados no editor do Apps Script e use **Implantar → Gerenciar implantações → editar (lápis) → Versão: Nova versão → Implantar**. O link continua o mesmo.

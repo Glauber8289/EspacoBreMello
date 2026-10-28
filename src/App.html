@@ -223,7 +223,7 @@
     f.id.value = editando ? a.id : '';
     f.clienteId.value = (a && a.clienteId) || '';
     f.data.value = (a && a.data) || estado.diaSel;
-    f.procedimento.value = (a && a.procedimento) || '';
+    definirProcedimentos((a && a.procedimento) || '');
     f.status.value = (a && a.status) || 'Agendado';
     f.observacoes.value = (a && a.observacoes) || '';
     $('#campo-status').style.display = editando ? '' : 'none';
@@ -232,6 +232,33 @@
       : a && a.inicio && a.fim ? minutos(a.fim) - minutos(a.inicio) : estado.config.DURACAO_MIN);
     preencherHorarios(a && a.inicio);
     $('#modal-agendamento').showModal();
+  }
+
+  // Vários procedimentos no mesmo agendamento ficam gravados juntos, separados por "; ".
+  function adicionarProcedimento(valor, focar) {
+    var linha = document.createElement('div');
+    linha.className = 'proc-linha';
+    linha.innerHTML = '<input class="campo" list="procedimentos" autocomplete="off" placeholder="Escolha ou digite">' +
+      '<button type="button" class="btn-icone" aria-label="Remover procedimento" title="Remover">×</button>';
+    linha.querySelector('input').value = valor || '';
+    linha.querySelector('button').onclick = function () {
+      linha.remove();
+      if (!$('#lista-procs').children.length) adicionarProcedimento('');
+    };
+    $('#lista-procs').appendChild(linha);
+    if (focar) linha.querySelector('input').focus();
+  }
+
+  function definirProcedimentos(texto) {
+    $('#lista-procs').innerHTML = '';
+    var itens = String(texto || '').split(';').map(function (p) { return p.trim(); }).filter(String);
+    if (!itens.length) itens = [''];
+    itens.forEach(function (p) { adicionarProcedimento(p); });
+  }
+
+  function lerProcedimentos() {
+    return $$('#lista-procs input').map(function (i) { return i.value.replace(/;/g, ',').trim(); })
+      .filter(String).join('; ');
   }
 
   function textoDuracao(m) {
@@ -284,7 +311,7 @@
     ev.preventDefault();
     var f = ev.target;
     var dados = { id: f.id.value, clienteId: f.clienteId.value, data: f.data.value, inicio: f.inicio.value,
-      duracao: +f.duracao.value, procedimento: f.procedimento.value, status: f.status.value, observacoes: f.observacoes.value };
+      duracao: +f.duracao.value, procedimento: lerProcedimentos(), status: f.status.value, observacoes: f.observacoes.value };
     if (!dados.inicio) return erro(new Error('Escolha um horário livre.'));
     travar(f, true);
     servidor('salvarAgendamento', dados).then(function (a) {
@@ -407,10 +434,11 @@
   $('#excluir-agendamento').onclick = excluirAgendamento;
   $('#form-agendamento').data.addEventListener('change', function () { preencherHorarios(); });
   $('#form-agendamento').duracao.addEventListener('change', function () { preencherHorarios(); });
+  $('#add-proc').onclick = function () { adicionarProcedimento('', true); };
   $('#cliente-rapida').onclick = function () {
     var f = $('#form-agendamento');
     estado.voltarParaAgendamento = { id: f.id.value, data: f.data.value, inicio: f.inicio.value, duracao: f.duracao.value,
-      procedimento: f.procedimento.value, status: f.status.value, observacoes: f.observacoes.value };
+      procedimento: lerProcedimentos(), status: f.status.value, observacoes: f.observacoes.value };
     $('#modal-agendamento').close();
     abrirCliente(null);
   };

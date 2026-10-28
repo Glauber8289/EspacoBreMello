@@ -3,7 +3,7 @@
 Site para o Espaço Bre Melo com duas funções:
 
 - **Clientes**: cadastro com nome, telefone, data de nascimento, quantidade de sessões e observações. Mostra as aniversariantes do mês e um atalho para o WhatsApp de cada cliente.
-- **Agenda**: visão da semana (no celular, um dia por vez). Cada agendamento reserva **2 horas** por padrão, e a duração pode ser trocada em cada agendamento (de 30 minutos a 8 horas). O sistema bloqueia o intervalo inteiro e não deixa marcar duas clientes no mesmo horário. Ao marcar um atendimento como **Concluído**, a ficha da cliente ganha +1 sessão automaticamente.
+- **Agenda**: visão da semana (no celular, um dia por vez). Cada agendamento reserva **2 horas** por padrão, e a duração pode ser trocada em cada agendamento (de 30 minutos a 8 horas). O sistema bloqueia o intervalo inteiro e não deixa marcar duas clientes no mesmo horário. Um agendamento pode ter vários procedimentos (botão **+ Adicionar procedimento**). Ao marcar um atendimento como **Concluído**, a ficha da cliente ganha +1 sessão automaticamente.
 
 Os dados ficam numa **planilha Google** da conta do espaço, então os dois usam o mesmo site e veem as mesmas informações. Todo agendamento também aparece na **Agenda Google** da conta do espaço, e a aba **Exportar** baixa tudo em **Excel (.xlsx)**.
 

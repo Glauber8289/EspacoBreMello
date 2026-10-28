@@ -109,7 +109,11 @@
       </div>
       <label>Horário<select class="campo" name="inicio" required></select></label>
       <p class="info-horario" id="info-horario"></p>
-      <label>Procedimento<input class="campo" name="procedimento" list="procedimentos" autocomplete="off"></label>
+      <div class="grupo-procs">
+        <span class="rotulo">Procedimentos</span>
+        <div id="lista-procs"></div>
+        <button type="button" class="btn-sec btn-pequeno" id="add-proc">+ Adicionar procedimento</button>
+      </div>
       <label id="campo-status">Status
         <select class="campo" name="status">
           <option>Agendado</option>

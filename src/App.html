@@ -9,7 +9,7 @@
   var estado = {
     clientes: [],
     agendamentos: [],
-    config: { DURACAO_MIN: 120, HORA_ABERTURA: '06:00', HORA_FECHAMENTO: '24:00', INTERVALO_MIN: 30 },
+    config: { DURACAO_MIN: 120, DURACAO_MAX_MIN: 480, HORA_ABERTURA: '06:00', HORA_FECHAMENTO: '24:00', INTERVALO_MIN: 30 },
     semana: inicioSemana(new Date()),
     diaSel: isoData(new Date()),
     voltarParaAgendamento: null
@@ -228,14 +228,33 @@
     f.observacoes.value = (a && a.observacoes) || '';
     $('#campo-status').style.display = editando ? '' : 'none';
     $('#excluir-agendamento').style.visibility = editando ? 'visible' : 'hidden';
+    preencherDuracoes(a && a.duracao ? +a.duracao
+      : a && a.inicio && a.fim ? minutos(a.fim) - minutos(a.inicio) : estado.config.DURACAO_MIN);
     preencherHorarios(a && a.inicio);
     $('#modal-agendamento').showModal();
+  }
+
+  function textoDuracao(m) {
+    var h = Math.floor(m / 60), r = m % 60;
+    return h ? h + 'h' + (r ? pad(r) : '') : r + ' min';
+  }
+
+  function preencherDuracoes(escolhida) {
+    var f = $('#form-agendamento'), cfg = estado.config;
+    var passo = cfg.INTERVALO_MIN, max = cfg.DURACAO_MAX_MIN || 480, opcoes = [];
+    for (var m = passo; m <= max; m += passo) opcoes.push(m);
+    if (opcoes.indexOf(escolhida) < 0 && escolhida > 0) opcoes.push(escolhida);
+    opcoes.sort(function (x, y) { return x - y; });
+    f.duracao.innerHTML = opcoes.map(function (m) {
+      return '<option value="' + m + '">' + textoDuracao(m) + (m === cfg.DURACAO_MIN ? ' (padrão)' : '') + '</option>';
+    }).join('');
+    f.duracao.value = String(escolhida > 0 ? escolhida : cfg.DURACAO_MIN);
   }
 
   function preencherHorarios(escolhido) {
     var f = $('#form-agendamento'), cfg = estado.config;
     var atual = escolhido || f.inicio.value;
-    var dur = cfg.DURACAO_MIN, abre = minutos(cfg.HORA_ABERTURA), fecha = minutos(cfg.HORA_FECHAMENTO);
+    var dur = +f.duracao.value || cfg.DURACAO_MIN, abre = minutos(cfg.HORA_ABERTURA), fecha = minutos(cfg.HORA_FECHAMENTO);
     var ocupados = ativos().filter(function (a) { return a.data === f.data.value && a.id !== f.id.value; });
     var opcoes = [], livres = 0;
     for (var m = abre; m + dur <= fecha; m += cfg.INTERVALO_MIN) {
@@ -265,7 +284,7 @@
     ev.preventDefault();
     var f = ev.target;
     var dados = { id: f.id.value, clienteId: f.clienteId.value, data: f.data.value, inicio: f.inicio.value,
-      procedimento: f.procedimento.value, status: f.status.value, observacoes: f.observacoes.value };
+      duracao: +f.duracao.value, procedimento: f.procedimento.value, status: f.status.value, observacoes: f.observacoes.value };
     if (!dados.inicio) return erro(new Error('Escolha um horário livre.'));
     travar(f, true);
     servidor('salvarAgendamento', dados).then(function (a) {
@@ -387,9 +406,10 @@
   $('#excluir-cliente').onclick = excluirCliente;
   $('#excluir-agendamento').onclick = excluirAgendamento;
   $('#form-agendamento').data.addEventListener('change', function () { preencherHorarios(); });
+  $('#form-agendamento').duracao.addEventListener('change', function () { preencherHorarios(); });
   $('#cliente-rapida').onclick = function () {
     var f = $('#form-agendamento');
-    estado.voltarParaAgendamento = { id: f.id.value, data: f.data.value, inicio: f.inicio.value,
+    estado.voltarParaAgendamento = { id: f.id.value, data: f.data.value, inicio: f.inicio.value, duracao: f.duracao.value,
       procedimento: f.procedimento.value, status: f.status.value, observacoes: f.observacoes.value };
     $('#modal-agendamento').close();
     abrirCliente(null);

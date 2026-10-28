@@ -6,7 +6,8 @@
  */
 
 var CONFIG = {
-  DURACAO_MIN: 120,          // cada agendamento reserva 2 horas
+  DURACAO_MIN: 120,          // duração padrão de um agendamento (2 horas); pode ser trocada em cada agendamento
+  DURACAO_MAX_MIN: 480,      // duração máxima que pode ser escolhida (8 horas)
   HORA_ABERTURA: '06:00',
   HORA_FECHAMENTO: '24:00',  // meia-noite (use 24:00, não 00:00); último atendimento começa às 22:00
   INTERVALO_MIN: 30,         // horários oferecidos a cada 30 minutos
@@ -118,10 +119,11 @@ function salvarAgendamento(dados) {
 
     var data = validarData_(dados.data, false);
     var inicio = validarHora_(dados.inicio);
-    var fim = somarMinutos_(inicio, CONFIG.DURACAO_MIN);
+    var duracao = validarDuracao_(dados.duracao);
+    var fim = somarMinutos_(inicio, duracao);
     if (inicio < CONFIG.HORA_ABERTURA || fim > CONFIG.HORA_FECHAMENTO) {
       throw new Error('O horário precisa ficar entre ' + CONFIG.HORA_ABERTURA + ' e ' + CONFIG.HORA_FECHAMENTO +
-        ' (cada atendimento dura 2 horas).');
+        ' (este atendimento vai das ' + inicio + ' às ' + fim + ').');
     }
     var status = [STATUS.AGENDADO, STATUS.CONCLUIDO, STATUS.CANCELADO].indexOf(dados.status) >= 0
       ? dados.status : STATUS.AGENDADO;
@@ -413,6 +415,15 @@ function validarHora_(v) {
   v = texto_(v);
   if (!/^\d{2}:\d{2}$/.test(v)) throw new Error('Horário inválido.');
   return v;
+}
+
+function validarDuracao_(v) {
+  if (v === undefined || v === null || v === '') return CONFIG.DURACAO_MIN;
+  var n = Number(v);
+  if (!(n % CONFIG.INTERVALO_MIN === 0 && n >= CONFIG.INTERVALO_MIN && n <= CONFIG.DURACAO_MAX_MIN)) {
+    throw new Error('Duração inválida: escolha de ' + CONFIG.INTERVALO_MIN + ' minutos a ' + (CONFIG.DURACAO_MAX_MIN / 60) + ' horas.');
+  }
+  return n;
 }
 
 function somarMinutos_(hora, minutos) {

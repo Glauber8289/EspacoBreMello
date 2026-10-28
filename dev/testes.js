@@ -32,6 +32,19 @@ var a3 = amb.salvarAgendamento({ clienteId: bia.id, data: D, inicio: '08:00' });
 falha(function () { amb.salvarAgendamento({ clienteId: bia.id, data: D, inicio: '22:30' }); }, 'entre');
 falha(function () { amb.salvarAgendamento({ clienteId: 'nao-existe', data: D, inicio: '15:00' }); }, 'Selecione');
 
+// duração editável: 3 horas bloqueia o intervalo inteiro
+var D2 = new Date(Date.now() + 2 * 864e5);
+D2 = D2.getFullYear() + '-' + String(D2.getMonth() + 1).padStart(2, '0') + '-' + String(D2.getDate()).padStart(2, '0');
+var l3 = amb.salvarAgendamento({ clienteId: ana.id, data: D2, inicio: '14:00', duracao: 180 });
+assert.strictEqual(l3.fim, '17:00');
+falha(function () { amb.salvarAgendamento({ clienteId: bia.id, data: D2, inicio: '16:30', duracao: 30 }); }, 'Horário ocupado');
+falha(function () { amb.salvarAgendamento({ clienteId: bia.id, data: D2, inicio: '12:30', duracao: 120 }); }, 'Horário ocupado');
+var curto = amb.salvarAgendamento({ clienteId: bia.id, data: D2, inicio: '17:00', duracao: 30 });
+assert.strictEqual(curto.fim, '17:30');
+falha(function () { amb.salvarAgendamento({ clienteId: bia.id, data: D2, inicio: '20:00', duracao: 45 }); }, 'Duração inválida');
+falha(function () { amb.salvarAgendamento({ clienteId: bia.id, data: D2, inicio: '22:00', duracao: 180 }); }, 'entre');
+amb.excluirAgendamento(curto.id);
+
 // editar sem conflitar consigo mesmo e movendo o evento
 var a1b = amb.salvarAgendamento({ id: a1.id, clienteId: ana.id, data: D, inicio: '10:00', procedimento: 'Botox capilar' });
 assert.strictEqual(a1b.eventoId, a1.eventoId);

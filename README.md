@@ -3,7 +3,7 @@
 Site para o Espaço Bre Melo com duas funções:
 
 - **Clientes**: cadastro com nome, telefone, data de nascimento, quantidade de sessões e observações. Mostra as aniversariantes do mês e um atalho para o WhatsApp de cada cliente.
-- **Agenda**: visão da semana (no celular, um dia por vez). Cada agendamento reserva **2 horas** e o sistema não deixa marcar duas clientes no mesmo horário. Ao marcar um atendimento como **Concluído**, a ficha da cliente ganha +1 sessão automaticamente.
+- **Agenda**: visão da semana (no celular, um dia por vez). Cada agendamento reserva **2 horas** por padrão, e a duração pode ser trocada em cada agendamento (de 30 minutos a 8 horas). O sistema bloqueia o intervalo inteiro e não deixa marcar duas clientes no mesmo horário. Ao marcar um atendimento como **Concluído**, a ficha da cliente ganha +1 sessão automaticamente.
 
 Os dados ficam numa **planilha Google** da conta do espaço, então os dois usam o mesmo site e veem as mesmas informações. Todo agendamento também aparece na **Agenda Google** da conta do espaço, e a aba **Exportar** baixa tudo em **Excel (.xlsx)**.
 
@@ -24,7 +24,7 @@ dev/
   testes.js          testes das regras (conflito de horário, sessões, agenda)
 ```
 
-Horário de funcionamento, duração e intervalo dos horários ficam no topo de `src/Code.gs` (`CONFIG`). Por padrão: das 06:00 à meia-noite (último atendimento começa às 22:00; escreva `24:00`, não `00:00`), atendimentos de 2 horas, horários a cada 30 minutos.
+Horário de funcionamento, duração e intervalo dos horários ficam no topo de `src/Code.gs` (`CONFIG`). Por padrão: das 06:00 à meia-noite (último atendimento começa às 22:00; escreva `24:00`, não `00:00`), duração padrão de 2 horas (máximo de 8 horas, em `DURACAO_MAX_MIN`), horários a cada 30 minutos.
 
 ## Instalação (uma vez, na conta Google do espaço)
 

@@ -39,7 +39,7 @@
       </div>
       <div class="dias-chips" id="dias-chips"></div>
       <div class="grade" id="grade"></div>
-      <p class="dica">Toque em um horário livre para agendar. Cada atendimento reserva 2 horas.</p>
+      <p class="dica">Toque em um horário livre para agendar. Cada atendimento reserva 2 horas, e dá para mudar a duração ao agendar.</p>
     </section>
 
     <!-- CLIENTES -->
@@ -105,8 +105,9 @@
       </label>
       <div class="linha2">
         <label>Data<input class="campo" name="data" type="date" required></label>
-        <label>Horário<select class="campo" name="inicio" required></select></label>
+        <label>Duração<select class="campo" name="duracao" required></select></label>
       </div>
+      <label>Horário<select class="campo" name="inicio" required></select></label>
       <p class="info-horario" id="info-horario"></p>
       <label>Procedimento<input class="campo" name="procedimento" list="procedimentos" autocomplete="off"></label>
       <label id="campo-status">Status

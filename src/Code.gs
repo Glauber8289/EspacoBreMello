@@ -16,12 +16,18 @@ var CONFIG = {
 
 var ABA_CLIENTES = 'Clientes';
 var ABA_AGENDAMENTOS = 'Agendamentos';
+var ABA_PACOTES = 'Pacotes';
 
 var COLS_CLIENTES = ['id', 'nome', 'telefone', 'nascimento', 'sessoes', 'observacoes', 'criadoEm', 'atualizadoEm'];
 var COLS_AGENDAMENTOS = ['id', 'clienteId', 'clienteNome', 'data', 'inicio', 'fim', 'procedimento', 'status',
-  'observacoes', 'eventoId', 'criadoEm', 'atualizadoEm'];
+  'observacoes', 'eventoId', 'criadoEm', 'atualizadoEm', 'tipo', 'valor', 'pacoteId'];
+// Um pacote é vendido uma vez (o valor entra no faturamento do mês da compra) e os
+// agendamentos ligados a ele são as sessões usadas.
+var COLS_PACOTES = ['id', 'clienteId', 'clienteNome', 'procedimentos', 'sessoes', 'valor', 'dataInicio', 'renovacao',
+  'criadoEm', 'atualizadoEm'];
 
 var STATUS = { AGENDADO: 'Agendado', CONCLUIDO: 'Concluído', CANCELADO: 'Cancelado' };
+var TIPO = { AVULSO: 'Avulso', PACOTE: 'Pacote' };
 
 /* ------------------------------------------------------------------ */
 /* Web App                                                              */
@@ -63,6 +69,7 @@ function carregarTudo() {
   return {
     clientes: lerTabela_(ABA_CLIENTES, COLS_CLIENTES).map(normalizarCliente_),
     agendamentos: lerTabela_(ABA_AGENDAMENTOS, COLS_AGENDAMENTOS).map(normalizarAgendamento_),
+    pacotes: lerTabela_(ABA_PACOTES, COLS_PACOTES).map(normalizarPacote_),
     config: CONFIG,
     agenda: obterAgenda_().getName(),
     planilhaUrl: planilha_().getUrl()
@@ -144,6 +151,16 @@ function salvarAgendamento(dados) {
       }
     }
 
+    // Sem tipo informado (ex.: só mudou o status), mantém o que já estava gravado.
+    var tipo = anterior ? anterior.tipo : '', valor = anterior ? anterior.valor : '', pacoteId = anterior ? anterior.pacoteId : '';
+    if (dados.tipo === TIPO.AVULSO) {
+      tipo = TIPO.AVULSO; pacoteId = '';
+      valor = validarValor_(dados.valor, 'da sessão');
+    } else if (dados.tipo === TIPO.PACOTE) {
+      tipo = TIPO.PACOTE; valor = '';
+      pacoteId = salvarPacote_(dados.pacote || {}, cliente, data);
+    }
+
     var ag = {
       id: id,
       clienteId: cliente.id,
@@ -156,7 +173,10 @@ function salvarAgendamento(dados) {
       observacoes: texto_(dados.observacoes),
       eventoId: anterior ? anterior.eventoId : '',
       criadoEm: anterior ? anterior.criadoEm : agoraIso_(),
-      atualizadoEm: agoraIso_()
+      atualizadoEm: agoraIso_(),
+      tipo: tipo,
+      valor: valor,
+      pacoteId: pacoteId
     };
 
     ag.eventoId = sincronizarEvento_(ag, cliente);
@@ -188,6 +208,180 @@ function excluirAgendamento(id) {
     aba.deleteRow(linha);
     return true;
   });
+}
+
+/**
+ * Cria um pacote novo (sem id) ou atualiza um existente da mesma cliente.
+ * Devolve o id do pacote.
+ */
+function salvarPacote_(dados, cliente, dataAgendamento) {
+  var aba = aba_(ABA_PACOTES);
+  var linha = dados.id ? acharLinha_(aba, dados.id) : 0;
+  var atual = linha ? lerLinha_(aba, linha, COLS_PACOTES) : null;
+  if (dados.id && !atual) throw new Error('Pacote não encontrado. Escolha outro ou crie um novo.');
+  if (atual && atual.clienteId !== cliente.id) throw new Error('Este pacote é de outra cliente.');
+
+  var procedimentos = texto_(dados.procedimentos);
+  if (!procedimentos) throw new Error('Informe os procedimentos do pacote.');
+  var sessoes = parseInt(dados.sessoes, 10);
+  if (!(sessoes >= 1 && sessoes <= 100)) throw new Error('Informe a quantidade de sessões do pacote.');
+  var pacote = {
+    id: atual ? atual.id : novoId_(),
+    clienteId: cliente.id,
+    clienteNome: cliente.nome,
+    procedimentos: procedimentos,
+    sessoes: String(sessoes),
+    valor: validarValor_(dados.valor, 'do pacote'),
+    dataInicio: atual ? atual.dataInicio : validarData_(dados.dataInicio || dataAgendamento, false),
+    renovacao: validarData_(dados.renovacao, true),
+    criadoEm: atual ? atual.criadoEm : agoraIso_(),
+    atualizadoEm: agoraIso_()
+  };
+  if (linha) escreverLinha_(aba, linha, COLS_PACOTES, pacote);
+  else aba.appendRow(COLS_PACOTES.map(function (c) { return pacote[c]; }));
+  return pacote.id;
+}
+
+/** Exclui um pacote criado por engano; os agendamentos dele ficam sem tipo. */
+function excluirPacote(id) {
+  return comTrava_(function () {
+    var aba = aba_(ABA_PACOTES);
+    var linha = acharLinha_(aba, id);
+    if (!linha) return true;
+    var abaAg = aba_(ABA_AGENDAMENTOS);
+    var tabela = lerTabelaInteira_(abaAg, COLS_AGENDAMENTOS);
+    var mudou = false;
+    tabela.forEach(function (ag) {
+      if (ag.pacoteId === id) { ag.pacoteId = ''; ag.tipo = ''; mudou = true; }
+    });
+    if (mudou) escreverTabelaInteira_(abaAg, COLS_AGENDAMENTOS, tabela);
+    aba.deleteRow(linha);
+    return true;
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Importar valores escritos no campo Observações                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Lê as observações dos agendamentos que ainda não têm tipo (pacote/avulso) e
+ * sugere tipo, valor e sessões. Não grava nada: a página mostra a prévia para conferir.
+ */
+function analisarObservacoes() {
+  var pacotes = lerTabela_(ABA_PACOTES, COLS_PACOTES);
+  var abertos = {};   // cliente -> { sessoes, usadas } do pacote mais recente (simulação)
+  var usadas = {};
+  lerTabela_(ABA_AGENDAMENTOS, COLS_AGENDAMENTOS).forEach(function (a) {
+    if (a.pacoteId && a.status !== STATUS.CANCELADO) usadas[a.pacoteId] = (usadas[a.pacoteId] || 0) + 1;
+  });
+  pacotes.sort(function (a, b) { return a.dataInicio.localeCompare(b.dataInicio); }).forEach(function (p) {
+    abertos[p.clienteId] = { sessoes: +p.sessoes || 0, usadas: usadas[p.id] || 0 };
+  });
+
+  var candidatos = lerTabela_(ABA_AGENDAMENTOS, COLS_AGENDAMENTOS).filter(function (a) {
+    return !a.tipo && a.status !== STATUS.CANCELADO;
+  }).sort(function (a, b) { return (a.data + a.inicio).localeCompare(b.data + b.inicio); });
+
+  var linhas = [], semObs = 0;
+  candidatos.forEach(function (a) {
+    if (!texto_(a.observacoes)) { semObs++; return; }
+    var lido = lerObservacao_(a.observacoes);
+    var l = { id: a.id, data: a.data, clienteId: a.clienteId, clienteNome: a.clienteNome, procedimento: a.procedimento,
+      observacoes: a.observacoes, tipo: 'Ignorar', valor: lido.valor, sessoes: lido.sessoes || '', novoPacote: false };
+    if (lido.pacote) {
+      l.tipo = TIPO.PACOTE;
+      var aberto = abertos[a.clienteId];
+      var cheio = !aberto || aberto.usadas >= aberto.sessoes;
+      l.novoPacote = lido.sessaoAtual === 1 || (cheio && lido.sessaoAtual === 0);
+      if (l.novoPacote) {
+        abertos[a.clienteId] = aberto = { sessoes: +l.sessoes || 0, usadas: 0 };
+      } else {
+        l.valor = '';
+      }
+      aberto.usadas++;
+    } else if (lido.valor !== '') {
+      l.tipo = TIPO.AVULSO;
+    }
+    linhas.push(l);
+  });
+  return { linhas: linhas, semObservacao: semObs };
+}
+
+/**
+ * Grava o que foi conferido na prévia. Cada linha: { id, tipo, valor, sessoes, novoPacote }.
+ * Linhas de pacote sem "novoPacote" entram como sessão do último pacote da cliente.
+ */
+function aplicarObservacoes(linhas) {
+  return comTrava_(function () {
+    var aba = aba_(ABA_AGENDAMENTOS);
+    var tabela = lerTabelaInteira_(aba, COLS_AGENDAMENTOS);
+    var porId = {};
+    tabela.forEach(function (a) { porId[a.id] = a; });
+    var abaPac = aba_(ABA_PACOTES);
+    var ultimos = {};
+    lerTabela_(ABA_PACOTES, COLS_PACOTES).sort(function (a, b) { return a.dataInicio.localeCompare(b.dataInicio); })
+      .forEach(function (p) { (ultimos[p.clienteId] = ultimos[p.clienteId] || []).push(p); });
+
+    var r = { avulsos: 0, pacotes: 0, sessoes: 0, semPacote: [] };
+    (linhas || []).map(function (l) { return { l: l, ag: porId[l.id] }; })
+      .filter(function (x) { return x.ag && !x.ag.tipo && (x.l.tipo === TIPO.AVULSO || x.l.tipo === TIPO.PACOTE); })
+      .sort(function (x, y) { return (x.ag.data + x.ag.inicio).localeCompare(y.ag.data + y.ag.inicio); })
+      .forEach(function (x) {
+        var ag = x.ag, l = x.l;
+        if (l.tipo === TIPO.AVULSO) {
+          ag.tipo = TIPO.AVULSO;
+          ag.valor = validarValor_(l.valor, 'da sessão (' + ag.clienteNome + ' em ' + ag.data + ')');
+          r.avulsos++;
+          return;
+        }
+        var lista = ultimos[ag.clienteId] = ultimos[ag.clienteId] || [];
+        if (l.novoPacote) {
+          var sessoes = parseInt(l.sessoes, 10);
+          if (!(sessoes >= 1)) throw new Error('Informe as sessões do pacote de ' + ag.clienteNome + ' (' + ag.data + ').');
+          var p = { id: novoId_(), clienteId: ag.clienteId, clienteNome: ag.clienteNome,
+            procedimentos: ag.procedimento || 'Pacote', sessoes: String(sessoes),
+            valor: validarValor_(l.valor, 'do pacote de ' + ag.clienteNome + ' (' + ag.data + ')'),
+            dataInicio: ag.data, renovacao: '', criadoEm: agoraIso_(), atualizadoEm: agoraIso_() };
+          abaPac.appendRow(COLS_PACOTES.map(function (c) { return p[c]; }));
+          lista.push(p);
+          r.pacotes++;
+        }
+        var doPacote = lista.filter(function (p) { return p.dataInicio <= ag.data; }).pop();
+        if (!doPacote) { r.semPacote.push(ag.clienteNome + ' em ' + ag.data); return; }
+        ag.tipo = TIPO.PACOTE;
+        ag.valor = '';
+        ag.pacoteId = doPacote.id;
+        r.sessoes++;
+      });
+    escreverTabelaInteira_(aba, COLS_AGENDAMENTOS, tabela);
+    return r;
+  });
+}
+
+/** Procura valor, menção a pacote e número de sessões num texto livre. */
+function lerObservacao_(obs) {
+  var t = String(obs || '');
+  var r = { valor: '', pacote: false, sessoes: 0, sessaoAtual: 0 };
+  var dinheiro = t.match(/R\$\s*(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)/i) ||
+    t.match(/(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:,\d{1,2})?)\s*(?:reais|real)\b/i) ||
+    t.match(/(?:valor|pago|pagou|pg|pix|dinheiro|cart[aã]o|total|cobrado|cobrei)\s*:?\s*(?:de\s*)?(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:,\d{1,2})?)/i) ||
+    t.match(/(?:^|\s)(\d{2,5},\d{2})(?!\d)/) ||
+    // último recurso: um número solto (não é data, fração de sessão, horário nem quantidade)
+    t.match(/(?:^|[\s:])(\d{2,5})(?![\d\/.,:]|\s*(?:sess|x\b|vezes|min|h\b|ml|%|ª|º|de\s+\d))/i);
+  if (dinheiro) {
+    try { r.valor = validarValor_(dinheiro[1], ''); } catch (e) { r.valor = ''; }
+    if (r.valor !== '' && +r.valor < 10) r.valor = '';
+  }
+  var n = t.match(/(\d{1,3})\s*sess(?:[oõ]es|[aã]o)/i);
+  if (n) r.sessoes = +n[1];
+  var fr = t.match(/(?:^|[^\d\/])(\d{1,2})\s*(?:\/|ª?\s*de)\s*(\d{1,2})(?![\d\/])/i);
+  if (fr && +fr[1] >= 1 && +fr[1] <= +fr[2] && +fr[2] <= 30) {
+    r.sessaoAtual = +fr[1];
+    r.sessoes = r.sessoes || +fr[2];
+  }
+  r.pacote = /pacote|pct\b/i.test(t) || r.sessaoAtual > 0;
+  return r;
 }
 
 /** Recria na Agenda Google os eventos que estiverem faltando (agendamentos antigos ou importados). */
@@ -296,7 +490,7 @@ function planilha_() {
 
 function garantirEstrutura_() {
   var ss = planilha_();
-  [[ABA_CLIENTES, COLS_CLIENTES], [ABA_AGENDAMENTOS, COLS_AGENDAMENTOS]].forEach(function (par) {
+  [[ABA_CLIENTES, COLS_CLIENTES], [ABA_AGENDAMENTOS, COLS_AGENDAMENTOS], [ABA_PACOTES, COLS_PACOTES]].forEach(function (par) {
     var aba = ss.getSheetByName(par[0]);
     if (!aba) {
       aba = ss.insertSheet(par[0]);
@@ -304,6 +498,16 @@ function garantirEstrutura_() {
       aba.setFrozenRows(1);
       // Tudo como texto, para a planilha não converter datas e horas sozinha.
       aba.getRange(1, 1, aba.getMaxRows(), par[1].length).setNumberFormat('@');
+      return;
+    }
+    // Planilhas criadas antes de uma coluna nova existir: acrescenta o cabeçalho que falta.
+    var cab = aba.getRange(1, 1, 1, par[1].length).getValues()[0];
+    var primeira = 0;
+    for (var i = 0; i < par[1].length; i++) if (!cab[i]) { primeira = i + 1; break; }
+    if (primeira) {
+      var faltam = par[1].slice(primeira - 1);
+      aba.getRange(1, primeira, 1, faltam.length).setValues([faltam]).setFontWeight('bold');
+      aba.getRange(1, primeira, aba.getMaxRows(), faltam.length).setNumberFormat('@');
     }
   });
 }
@@ -319,6 +523,20 @@ function lerTabela_(nome, cols) {
   return aba.getRange(2, 1, n, cols.length).getValues()
     .filter(function (l) { return l[0] !== ''; })
     .map(function (l) { return objeto_(l, cols); });
+}
+
+/** Lê todas as linhas na ordem da planilha (inclusive vazias), para regravar de uma vez. */
+function lerTabelaInteira_(aba, cols) {
+  var n = aba.getLastRow() - 1;
+  if (n < 1) return [];
+  return aba.getRange(2, 1, n, cols.length).getValues().map(function (l) { return objeto_(l, cols); });
+}
+
+function escreverTabelaInteira_(aba, cols, tabela) {
+  if (!tabela.length) return;
+  aba.getRange(2, 1, tabela.length, cols.length).setValues(tabela.map(function (o) {
+    return cols.map(function (c) { return o[c] === undefined ? '' : o[c]; });
+  }));
 }
 
 function lerLinha_(aba, linha, cols) {
@@ -361,6 +579,12 @@ function renomearClienteNosAgendamentos_(cliente) {
     if (ag.data >= hojeIso_()) ag.eventoId = sincronizarEvento_(ag, cliente);
     escreverLinha_(aba, i + 2, COLS_AGENDAMENTOS, ag);
   });
+  var abaPac = aba_(ABA_PACOTES);
+  lerTabela_(ABA_PACOTES, COLS_PACOTES).forEach(function (p) {
+    if (p.clienteId !== cliente.id) return;
+    p.clienteNome = cliente.nome;
+    escreverLinha_(abaPac, acharLinha_(abaPac, p.id), COLS_PACOTES, p);
+  });
 }
 
 function ajustarSessoes_(clienteId, delta) {
@@ -398,6 +622,23 @@ function normalizarAgendamento_(a) {
   var o = {};
   COLS_AGENDAMENTOS.forEach(function (c) { o[c] = String(a[c] === undefined ? '' : a[c]); });
   return o;
+}
+
+function normalizarPacote_(p) {
+  var o = {};
+  COLS_PACOTES.forEach(function (c) { o[c] = String(p[c] === undefined ? '' : p[c]); });
+  return o;
+}
+
+/** Aceita 150, "150,00", "1.200,50", "R$ 90" e devolve o número como texto ("1200.5"). */
+function validarValor_(v, oQue) {
+  var s = String(v === undefined || v === null ? '' : v).replace(/R\$|\s/gi, '');
+  if (!s) return '';
+  if (s.indexOf(',') >= 0) s = s.replace(/\./g, '').replace(',', '.');
+  else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');
+  var n = Number(s);
+  if (!isFinite(n) || n < 0 || n > 1e6) throw new Error('Valor ' + oQue + ' inválido: ' + v);
+  return String(Math.round(n * 100) / 100);
 }
 
 function texto_(v) {

@@ -5,6 +5,10 @@ Site para o Espaço Bre Melo com duas funções:
 - **Clientes**: cadastro com nome, telefone, data de nascimento, quantidade de sessões e observações. Mostra as aniversariantes do mês e um atalho para o WhatsApp de cada cliente.
 - **Agenda**: visão da semana (no celular, um dia por vez). Cada agendamento reserva **2 horas** por padrão, e a duração pode ser trocada em cada agendamento (de 30 minutos a 8 horas). O sistema bloqueia o intervalo inteiro e não deixa marcar duas clientes no mesmo horário. Um agendamento pode ter vários procedimentos (botão **+ Adicionar procedimento**). Ao marcar um atendimento como **Concluído**, a ficha da cliente ganha +1 sessão automaticamente.
 
+- **Pacote ou avulso**: todo agendamento novo pergunta se é de pacote. Se for, escolhe um pacote da cliente (ou cria um novo) com procedimentos, quantidade de sessões, valor e data de renovação, e o sistema mostra "sessão 3 de 4". Se for avulso, pede os procedimentos e o valor da sessão.
+- **Faturamento**: gráfico mês a mês (avulsos + pacotes vendidos), com os números do mês por procedimento e por cliente, quantidade de pacotes vendidos e sessões de pacote, e a lista de pacotes com a data de renovação. O valor do pacote entra no mês da venda (primeira sessão); quando há vários procedimentos, o valor é dividido igualmente entre eles.
+- **Importar valores das observações**: lê o campo Observações dos agendamentos antigos (ex.: "R$ 150", "pagou 120", "pacote 4 sessões 400", "2/4") e mostra uma prévia para conferir e corrigir antes de gravar. A planilha ganha a aba **Pacotes** e as colunas `tipo`, `valor` e `pacoteId` em Agendamentos.
+
 Os dados ficam numa **planilha Google** da conta do espaço, então os dois usam o mesmo site e veem as mesmas informações. Todo agendamento também aparece na **Agenda Google** da conta do espaço, e a aba **Exportar** baixa tudo em **Excel (.xlsx)**.
 
 ## Como funciona

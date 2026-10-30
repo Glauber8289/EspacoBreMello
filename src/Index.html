@@ -21,6 +21,7 @@
     <nav class="abas" role="tablist">
       <button class="aba ativa" data-aba="agenda" role="tab">Agenda</button>
       <button class="aba" data-aba="clientes" role="tab">Clientes</button>
+      <button class="aba" data-aba="faturamento" role="tab">Faturamento</button>
       <button class="aba" data-aba="exportar" role="tab">Exportar</button>
     </nav>
   </header>
@@ -52,12 +53,47 @@
       <div id="lista-clientes" class="lista-clientes"></div>
     </section>
 
+    <!-- FATURAMENTO -->
+    <section id="tela-faturamento" class="tela">
+      <div class="barra">
+        <div class="nav-semana nav-ano">
+          <button class="btn-icone" id="ano-ant" aria-label="Ano anterior">‹</button>
+          <h2 id="fat-ano"></h2>
+          <button class="btn-icone" id="ano-prox" aria-label="Próximo ano">›</button>
+        </div>
+        <button class="btn-sec" id="importar-obs">Importar valores das observações</button>
+      </div>
+      <div id="fat-pendentes" class="faixa"></div>
+      <div class="cartao">
+        <div class="cab-grafico">
+          <h3>Faturamento mês a mês</h3>
+          <div class="legenda">
+            <span><i class="cor-avulso"></i>Avulsos</span>
+            <span><i class="cor-pacote"></i>Pacotes vendidos</span>
+          </div>
+        </div>
+        <div id="fat-grafico" class="grafico"></div>
+        <p class="dica">Toque em um mês para ver os detalhes. O valor do pacote entra no mês em que ele foi vendido (a primeira sessão);
+          meses futuros mostram o que já está agendado.</p>
+      </div>
+      <h3 id="fat-mes-titulo" class="titulo-mes"></h3>
+      <div id="fat-numeros" class="numeros"></div>
+      <div class="cartoes">
+        <div class="cartao"><h3>Por procedimento</h3><div id="fat-procs"></div></div>
+        <div class="cartao"><h3>Por cliente</h3><div id="fat-clientes"></div></div>
+      </div>
+      <div class="cartao cartao-pacotes">
+        <h3>Pacotes</h3>
+        <div id="fat-pacotes"></div>
+      </div>
+    </section>
+
     <!-- EXPORTAR -->
     <section id="tela-exportar" class="tela">
       <div class="cartoes">
         <div class="cartao">
           <h3>Planilha Excel</h3>
-          <p>Baixa um arquivo .xlsx com duas abas: todas as clientes e todos os agendamentos.</p>
+          <p>Baixa um arquivo .xlsx com três abas: clientes, agendamentos (com tipo e valor) e pacotes.</p>
           <button class="btn" id="baixar-excel">Baixar Excel</button>
           <a class="link" id="abrir-planilha" target="_blank" rel="noopener">Abrir a planilha Google com os dados</a>
         </div>
@@ -109,11 +145,28 @@
       </div>
       <label>Horário<select class="campo" name="inicio" required></select></label>
       <p class="info-horario" id="info-horario"></p>
+      <div class="grupo-tipo">
+        <span class="rotulo">Este atendimento é de pacote?</span>
+        <div class="opcoes-tipo">
+          <label><input type="radio" name="tipo" value="Pacote"><span>Sim, pacote</span></label>
+          <label><input type="radio" name="tipo" value="Avulso"><span>Não, avulso</span></label>
+        </div>
+      </div>
+      <label id="campo-pacote" hidden>Qual pacote<select class="campo" name="pacoteId"></select></label>
       <div class="grupo-procs">
-        <span class="rotulo">Procedimentos</span>
+        <span class="rotulo" id="rotulo-procs">Procedimentos</span>
         <div id="lista-procs"></div>
         <button type="button" class="btn-sec btn-pequeno" id="add-proc">+ Adicionar procedimento</button>
       </div>
+      <div id="campos-pacote" hidden>
+        <div class="linha2">
+          <label>Quantidade de sessões<input class="campo" name="pacSessoes" type="number" min="1" max="100" step="1"></label>
+          <label>Valor do pacote (R$)<input class="campo" name="pacValor" inputmode="decimal" placeholder="0,00" autocomplete="off"></label>
+        </div>
+        <label>Data de renovação<input class="campo" name="pacRenovacao" type="date"></label>
+        <p class="info-horario" id="info-pacote"></p>
+      </div>
+      <label id="campo-valor" hidden>Valor desta sessão (R$)<input class="campo" name="valor" inputmode="decimal" placeholder="0,00" autocomplete="off"></label>
       <label id="campo-status">Status
         <select class="campo" name="status">
           <option>Agendado</option>
@@ -127,6 +180,25 @@
         <span class="espaco"></span>
         <button type="button" class="btn-sec" data-fechar>Cancelar</button>
         <button type="submit" class="btn">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- MODAL IMPORTAR OBSERVAÇÕES -->
+  <dialog id="modal-importar" class="modal modal-largo">
+    <form id="form-importar" method="dialog">
+      <h3>Importar valores das observações</h3>
+      <p class="dica-modal">O sistema leu as observações dos agendamentos que ainda não têm pacote ou avulso. Confira cada linha
+        e corrija o que precisar antes de gravar. As observações não são apagadas.</p>
+      <div id="importar-resumo" class="dica-modal"></div>
+      <div class="tabela-rolagem"><table class="tabela tabela-importar">
+        <thead><tr><th>Data</th><th>Cliente</th><th>Observação</th><th>Tipo</th><th>Valor (R$)</th><th>Início de pacote?</th><th>Sessões</th></tr></thead>
+        <tbody id="importar-linhas"></tbody>
+      </table></div>
+      <div class="acoes">
+        <span class="espaco"></span>
+        <button type="button" class="btn-sec" data-fechar>Cancelar</button>
+        <button type="submit" class="btn" id="gravar-importar">Gravar</button>
       </div>
     </form>
   </dialog>

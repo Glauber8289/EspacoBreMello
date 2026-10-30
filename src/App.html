@@ -9,6 +9,9 @@
   var estado = {
     clientes: [],
     agendamentos: [],
+    pacotes: [],
+    anoFat: new Date().getFullYear(),
+    mesFat: isoData(new Date()).slice(0, 7),
     config: { DURACAO_MIN: 120, DURACAO_MAX_MIN: 480, HORA_ABERTURA: '06:00', HORA_FECHAMENTO: '24:00', INTERVALO_MIN: 30 },
     semana: inicioSemana(new Date()),
     diaSel: isoData(new Date()),
@@ -38,6 +41,7 @@
     return servidor('carregarTudo').then(function (d) {
       estado.clientes = d.clientes;
       estado.agendamentos = d.agendamentos;
+      estado.pacotes = d.pacotes || [];
       estado.config = d.config;
       if (d.agenda) $('#nome-agenda').textContent = '"' + d.agenda + '"';
       if (d.planilhaUrl) $('#abrir-planilha').href = d.planilhaUrl;
@@ -65,7 +69,7 @@
 
   /* ---------------- Render ---------------- */
 
-  function renderTudo() { renderAgenda(); renderClientes(); }
+  function renderTudo() { renderAgenda(); renderClientes(); renderFaturamento(); }
 
   function ativos() {
     return estado.agendamentos.filter(function (a) { return a.status !== 'Cancelado'; });
@@ -136,6 +140,9 @@
     ativos().filter(function (a) { return a.status === 'Agendado' && a.data >= hoje; })
       .sort(function (a, b) { return (a.data + a.inicio).localeCompare(b.data + b.inicio); })
       .forEach(function (a) { if (!proximos[a.clienteId]) proximos[a.clienteId] = a; });
+    var pacoteAtual = {};
+    estado.pacotes.slice().sort(function (a, b) { return a.dataInicio.localeCompare(b.dataInicio); })
+      .forEach(function (p) { pacoteAtual[p.clienteId] = p; });
 
     var lista = estado.clientes.slice().sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt-BR'); })
       .filter(function (c) {
@@ -150,6 +157,7 @@
         '<div class="dados">' + esc(c.telefone || 'Sem telefone') +
         (c.nascimento ? ' · ' + dataBr(c.nascimento) + (id !== null ? ' (' + id + ' anos)' : '') : '') + '</div>' +
         (p ? '<div class="proximo">Próximo: ' + dataBr(p.data) + ' às ' + p.inicio + '</div>' : '') +
+        (pacoteAtual[c.id] ? '<div class="proximo">' + textoPacote(pacoteAtual[c.id]) + '</div>' : '') +
         '<div class="rodape"><span class="selo">' + c.sessoes + (c.sessoes === 1 ? ' sessão' : ' sessões') + '</span>' +
         (tel ? '<a class="zap" target="_blank" rel="noopener" href="https://wa.me/' + (tel.length <= 11 ? '55' : '') + tel + '">WhatsApp</a>' : '') +
         '</div></div>';
@@ -224,6 +232,11 @@
     f.clienteId.value = (a && a.clienteId) || '';
     f.data.value = (a && a.data) || estado.diaSel;
     definirProcedimentos((a && a.procedimento) || '');
+    f.valor.value = valorCampo(a && a.valor);
+    $$('#form-agendamento [name=tipo]').forEach(function (r) { r.checked = !!a && r.value === a.tipo; });
+    estado.tipoObrigatorio = !editando || !!(a && a.tipo);
+    preencherPacotes(a && a.pacoteId, a && a.pacote);
+    atualizarTipo();
     f.status.value = (a && a.status) || 'Agendado';
     f.observacoes.value = (a && a.observacoes) || '';
     $('#campo-status').style.display = editando ? '' : 'none';
@@ -232,6 +245,89 @@
       : a && a.inicio && a.fim ? minutos(a.fim) - minutos(a.inicio) : estado.config.DURACAO_MIN);
     preencherHorarios(a && a.inicio);
     $('#modal-agendamento').showModal();
+  }
+
+  /* Pacote ou avulso */
+
+  function tipoEscolhido() {
+    var r = $('#form-agendamento [name=tipo]:checked');
+    return r ? r.value : '';
+  }
+
+  function sessoesUsadas(pacoteId, ignorarId) {
+    return ativos().filter(function (a) { return a.pacoteId === pacoteId && a.id !== ignorarId; }).length;
+  }
+
+  function textoPacote(p) {
+    var usadas = sessoesUsadas(p.id);
+    return 'Pacote: ' + usadas + ' de ' + p.sessoes + ' sessões' +
+      (p.renovacao ? ' · renova ' + dataBr(p.renovacao) : '');
+  }
+
+  // Lista os pacotes da cliente escolhida; sem escolha, sugere o último que ainda tem sessões.
+  function preencherPacotes(escolhido, rascunho) {
+    var f = $('#form-agendamento');
+    var lista = estado.pacotes.filter(function (p) { return p.clienteId === f.clienteId.value; })
+      .sort(function (a, b) { return b.dataInicio.localeCompare(a.dataInicio); });
+    f.pacoteId.innerHTML = lista.map(function (p) {
+      return '<option value="' + p.id + '">' + esc(p.procedimentos) + ' · desde ' + dataBr(p.dataInicio) + ' · ' +
+        sessoesUsadas(p.id, f.id.value) + '/' + p.sessoes + ' sessões</option>';
+    }).join('') + '<option value="">+ Novo pacote</option>';
+    if (!escolhido) {
+      var livre = lista.filter(function (p) { return sessoesUsadas(p.id, f.id.value) < +p.sessoes; })[0];
+      escolhido = livre ? livre.id : '';
+    }
+    f.pacoteId.value = lista.some(function (p) { return p.id === escolhido; }) ? escolhido : '';
+    carregarPacote(rascunho, false);
+  }
+
+  function carregarPacote(rascunho, trocarProcs) {
+    var f = $('#form-agendamento');
+    var p = estado.pacotes.filter(function (x) { return x.id === f.pacoteId.value; })[0];
+    var dados = rascunho || p;
+    f.pacSessoes.value = dados ? dados.sessoes : '';
+    f.pacValor.value = dados ? valorCampo(dados.valor) : '';
+    f.pacRenovacao.value = dados ? dados.renovacao || '' : '';
+    if (p && trocarProcs && tipoEscolhido() === 'Pacote') definirProcedimentos(p.procedimentos);
+    atualizarInfoPacote();
+  }
+
+  function atualizarInfoPacote() {
+    var f = $('#form-agendamento');
+    var info = $('#info-pacote');
+    var total = +f.pacSessoes.value || 0;
+    if (!f.pacoteId.value) {
+      info.classList.remove('erro');
+      info.textContent = total ? 'Novo pacote: esta é a sessão 1 de ' + total + '.' : '';
+      return;
+    }
+    var n = sessoesUsadas(f.pacoteId.value, f.id.value) + 1;
+    info.classList.toggle('erro', n > total);
+    info.textContent = n > total
+      ? 'Este pacote já usou as ' + total + ' sessões. Para renovar, escolha "+ Novo pacote".'
+      : 'Esta é a sessão ' + n + ' de ' + total + ' deste pacote.';
+  }
+
+  function atualizarTipo() {
+    var tipo = tipoEscolhido();
+    var f = $('#form-agendamento');
+    $('#campos-pacote').hidden = tipo !== 'Pacote';
+    $('#campo-pacote').hidden = tipo !== 'Pacote' || f.pacoteId.options.length < 2;
+    $('#campo-valor').hidden = tipo !== 'Avulso';
+    $('#rotulo-procs').textContent = tipo === 'Pacote' ? 'Procedimentos do pacote' : 'Procedimentos';
+  }
+
+  function lerFormAgendamento() {
+    var f = $('#form-agendamento');
+    var dados = { id: f.id.value, clienteId: f.clienteId.value, data: f.data.value, inicio: f.inicio.value,
+      duracao: +f.duracao.value, procedimento: lerProcedimentos(), status: f.status.value, observacoes: f.observacoes.value,
+      tipo: tipoEscolhido(), valor: f.valor.value };
+    if (dados.tipo === 'Pacote') {
+      dados.pacoteId = f.pacoteId.value;
+      dados.pacote = { id: f.pacoteId.value, procedimentos: dados.procedimento, sessoes: f.pacSessoes.value,
+        valor: f.pacValor.value, renovacao: f.pacRenovacao.value };
+    }
+    return dados;
   }
 
   // Vários procedimentos no mesmo agendamento ficam gravados juntos, separados por "; ".
@@ -310,9 +406,15 @@
   function salvarAgendamento(ev) {
     ev.preventDefault();
     var f = ev.target;
-    var dados = { id: f.id.value, clienteId: f.clienteId.value, data: f.data.value, inicio: f.inicio.value,
-      duracao: +f.duracao.value, procedimento: lerProcedimentos(), status: f.status.value, observacoes: f.observacoes.value };
+    var dados = lerFormAgendamento();
     if (!dados.inicio) return erro(new Error('Escolha um horário livre.'));
+    if (!dados.tipo && estado.tipoObrigatorio) return erro(new Error('Responda se o atendimento é de pacote ou avulso.'));
+    if (dados.tipo === 'Pacote') {
+      if (!dados.procedimento) return erro(new Error('Informe os procedimentos do pacote.'));
+      if (!(+dados.pacote.sessoes >= 1)) return erro(new Error('Informe a quantidade de sessões do pacote.'));
+      if (!dados.pacote.valor) return erro(new Error('Informe o valor do pacote.'));
+    }
+    if (dados.tipo === 'Avulso' && !dados.valor) return erro(new Error('Informe o valor desta sessão.'));
     travar(f, true);
     servidor('salvarAgendamento', dados).then(function (a) {
       $('#modal-agendamento').close();
@@ -349,15 +451,24 @@
       .map(function (a) {
         return { 'Data': dataBr(a.data), 'Início': a.inicio, 'Fim': a.fim, 'Cliente': a.clienteNome,
           'Telefone': (nomes[a.clienteId] || {}).telefone || '', 'Procedimento': a.procedimento,
-          'Status': a.status, 'Observações': a.observacoes };
+          'Status': a.status, 'Tipo': a.tipo, 'Valor (R$)': a.valor === '' ? '' : +a.valor, 'Observações': a.observacoes };
+      });
+    var pacs = estado.pacotes.slice().sort(function (a, b) { return a.dataInicio.localeCompare(b.dataInicio); })
+      .map(function (p) {
+        return { 'Cliente': p.clienteNome, 'Procedimentos': p.procedimentos, 'Sessões': +p.sessoes,
+          'Sessões usadas': sessoesUsadas(p.id), 'Valor (R$)': +p.valor || 0, 'Início': dataBr(p.dataInicio),
+          'Renovação': dataBr(p.renovacao) };
       });
     var wb = XLSX.utils.book_new();
     var w1 = XLSX.utils.json_to_sheet(clientes, { header: ['Nome', 'Telefone', 'Data de nascimento', 'Idade', 'Sessões', 'Observações'] });
     w1['!cols'] = [{ wch: 32 }, { wch: 18 }, { wch: 18 }, { wch: 7 }, { wch: 9 }, { wch: 40 }];
-    var w2 = XLSX.utils.json_to_sheet(ags, { header: ['Data', 'Início', 'Fim', 'Cliente', 'Telefone', 'Procedimento', 'Status', 'Observações'] });
-    w2['!cols'] = [{ wch: 12 }, { wch: 8 }, { wch: 8 }, { wch: 32 }, { wch: 18 }, { wch: 30 }, { wch: 12 }, { wch: 40 }];
+    var w2 = XLSX.utils.json_to_sheet(ags, { header: ['Data', 'Início', 'Fim', 'Cliente', 'Telefone', 'Procedimento', 'Status', 'Tipo', 'Valor (R$)', 'Observações'] });
+    w2['!cols'] = [{ wch: 12 }, { wch: 8 }, { wch: 8 }, { wch: 32 }, { wch: 18 }, { wch: 30 }, { wch: 12 }, { wch: 9 }, { wch: 11 }, { wch: 40 }];
+    var w3 = XLSX.utils.json_to_sheet(pacs, { header: ['Cliente', 'Procedimentos', 'Sessões', 'Sessões usadas', 'Valor (R$)', 'Início', 'Renovação'] });
+    w3['!cols'] = [{ wch: 32 }, { wch: 36 }, { wch: 9 }, { wch: 14 }, { wch: 11 }, { wch: 12 }, { wch: 12 }];
     XLSX.utils.book_append_sheet(wb, w1, 'Clientes');
     XLSX.utils.book_append_sheet(wb, w2, 'Agendamentos');
+    XLSX.utils.book_append_sheet(wb, w3, 'Pacotes');
     XLSX.writeFile(wb, 'EspacoBreMelo_' + isoData(new Date()) + '.xlsx');
   }
 
@@ -366,6 +477,215 @@
       aviso(n + ' agendamento(s) conferido(s) na Agenda Google.');
       return recarregar();
     }).catch(erro);
+  }
+
+  /* ---------------- Faturamento ---------------- */
+
+  var NOMES_MES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro',
+    'Novembro', 'Dezembro'];
+
+  // Soma por mês (aaaa-mm). Avulso entra na data do atendimento; pacote, no mês em que foi vendido.
+  // Quando há vários procedimentos, o valor é dividido igualmente entre eles.
+  function calcularFaturamento() {
+    var meses = {};
+    function mes(chave) {
+      return meses[chave] = meses[chave] || { avulso: 0, pacote: 0, nAvulsos: 0, nPacotes: 0, sessoesPacote: 0, semTipo: 0,
+        procs: {}, clientes: {} };
+    }
+    function somar(m, procsTexto, cliente, v, campo) {
+      var procs = String(procsTexto || '').split(';').map(function (p) { return p.trim(); }).filter(String);
+      if (!procs.length) procs = ['(sem procedimento)'];
+      procs.forEach(function (p) {
+        var x = m.procs[p] = m.procs[p] || { avulso: 0, pacote: 0, sessoes: 0 };
+        x[campo] += v / procs.length;
+      });
+      var c = m.clientes[cliente] = m.clientes[cliente] || { avulso: 0, pacote: 0, sessoes: 0 };
+      c[campo] += v;
+    }
+    ativos().forEach(function (a) {
+      var m = mes(a.data.slice(0, 7));
+      if (a.tipo === 'Avulso') {
+        m.avulso += +a.valor || 0; m.nAvulsos++;
+        somar(m, a.procedimento, a.clienteNome, +a.valor || 0, 'avulso');
+      } else if (a.tipo === 'Pacote') {
+        m.sessoesPacote++;
+      } else {
+        m.semTipo++;
+      }
+      var c = m.clientes[a.clienteNome] = m.clientes[a.clienteNome] || { avulso: 0, pacote: 0, sessoes: 0 };
+      c.sessoes++;
+      String(a.procedimento || '').split(';').map(function (p) { return p.trim(); }).filter(String).forEach(function (p) {
+        var x = m.procs[p] = m.procs[p] || { avulso: 0, pacote: 0, sessoes: 0 };
+        x.sessoes++;
+      });
+    });
+    estado.pacotes.forEach(function (p) {
+      var m = mes(p.dataInicio.slice(0, 7));
+      m.pacote += +p.valor || 0; m.nPacotes++;
+      somar(m, p.procedimentos, p.clienteNome, +p.valor || 0, 'pacote');
+    });
+    return meses;
+  }
+
+  function reais(v) {
+    return 'R$ ' + (Math.round(v * 100) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function reaisCurto(v) {
+    return v >= 1000 ? 'R$ ' + (v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' mil' : 'R$ ' + Math.round(v);
+  }
+  function valorCampo(v) {
+    return v === undefined || v === null || v === '' ? '' : String(v).replace('.', ',');
+  }
+
+  function escalaBonita(max) {
+    if (max <= 0) return 100;
+    var pot = Math.pow(10, Math.floor(Math.log10(max)));
+    var passos = [1, 2, 2.5, 5, 10];
+    for (var i = 0; i < passos.length; i++) if (passos[i] * pot * 4 >= max) return passos[i] * pot * 4;
+    return 10 * pot * 4;
+  }
+
+  function renderFaturamento() {
+    var meses = calcularFaturamento();
+    var ano = estado.anoFat;
+    if (estado.mesFat.slice(0, 4) !== String(ano)) estado.mesFat = ano + '-' + (ano === new Date().getFullYear() ? pad(new Date().getMonth() + 1) : '12');
+    $('#fat-ano').textContent = ano;
+
+    var lista = [];
+    for (var i = 1; i <= 12; i++) {
+      var chave = ano + '-' + pad(i);
+      lista.push({ chave: chave, i: i - 1, m: meses[chave] || { avulso: 0, pacote: 0 } });
+    }
+    var topo = escalaBonita(Math.max.apply(null, lista.map(function (x) { return x.m.avulso + x.m.pacote; })));
+    var html = '<div class="eixo">';
+    for (var g = 4; g >= 0; g--) html += '<div class="grade-linha"><span>' + reaisCurto(topo * g / 4) + '</span></div>';
+    html += '</div><div class="barras">';
+    lista.forEach(function (x) {
+      var total = x.m.avulso + x.m.pacote;
+      html += '<button class="coluna' + (x.chave === estado.mesFat ? ' sel' : '') + '" data-mes="' + x.chave + '"' +
+        ' data-dica="' + esc(NOMES_MES[x.i] + ': ' + reais(total) + ' — avulsos ' + reais(x.m.avulso) + ', pacotes ' + reais(x.m.pacote)) + '">' +
+        '<div class="pilha">' +
+        (x.m.pacote ? '<div class="seg pacote" style="height:' + (x.m.pacote / topo * 100) + '%"></div>' : '') +
+        (x.m.avulso ? '<div class="seg avulso" style="height:' + (x.m.avulso / topo * 100) + '%"></div>' : '') +
+        '</div><span class="mes">' + MESES[x.i] + '</span></button>';
+    });
+    html += '</div><div class="dica-grafico" id="dica-grafico"></div>';
+    $('#fat-grafico').innerHTML = html;
+
+    var semTipo = ativos().filter(function (a) { return !a.tipo && a.data <= isoData(new Date()); }).length;
+    $('#fat-pendentes').innerHTML = semTipo
+      ? semTipo + (semTipo === 1 ? ' atendimento ainda não tem' : ' atendimentos ainda não têm') +
+        ' pacote ou avulso, então não entram no faturamento. Use <b>Importar valores das observações</b> ou edite cada um na agenda.'
+      : '';
+
+    var mesSel = meses[estado.mesFat] || { avulso: 0, pacote: 0, nAvulsos: 0, nPacotes: 0, sessoesPacote: 0, semTipo: 0, procs: {}, clientes: {} };
+    var nMes = +estado.mesFat.slice(5) - 1;
+    $('#fat-mes-titulo').textContent = NOMES_MES[nMes] + ' de ' + ano;
+    $('#fat-numeros').innerHTML = [
+      ['Faturamento', reais(mesSel.avulso + mesSel.pacote), ''],
+      ['Avulsos', reais(mesSel.avulso), mesSel.nAvulsos + (mesSel.nAvulsos === 1 ? ' sessão' : ' sessões')],
+      ['Pacotes vendidos', String(mesSel.nPacotes), reais(mesSel.pacote)],
+      ['Sessões de pacote', String(mesSel.sessoesPacote), 'atendimentos do mês usando pacote']
+    ].map(function (n) {
+      return '<div class="numero"><span>' + n[0] + '</span><b>' + n[1] + '</b><small>' + n[2] + '</small></div>';
+    }).join('');
+
+    $('#fat-procs').innerHTML = tabelaFat(mesSel.procs, 'Procedimento');
+    $('#fat-clientes').innerHTML = tabelaFat(mesSel.clientes, 'Cliente');
+
+    var pacotes = estado.pacotes.slice().sort(function (a, b) {
+      return (a.renovacao || '9999').localeCompare(b.renovacao || '9999') || b.dataInicio.localeCompare(a.dataInicio);
+    });
+    var hoje = isoData(new Date());
+    $('#fat-pacotes').innerHTML = pacotes.length
+      ? '<div class="tabela-rolagem"><table class="tabela"><thead><tr><th>Cliente</th><th>Procedimentos</th><th class="num">Sessões</th>' +
+        '<th class="num">Valor</th><th>Vendido em</th><th>Renovação</th><th></th></tr></thead><tbody>' +
+        pacotes.map(function (p) {
+          var usadas = sessoesUsadas(p.id), vence = p.renovacao && p.renovacao <= hoje;
+          return '<tr><td>' + esc(p.clienteNome) + '</td><td>' + esc(p.procedimentos) + '</td>' +
+            '<td class="num">' + usadas + ' / ' + p.sessoes + '</td><td class="num">' + reais(+p.valor || 0) + '</td>' +
+            '<td>' + dataBr(p.dataInicio) + '</td><td' + (vence ? ' class="alerta"' : '') + '>' + (dataBr(p.renovacao) || '—') + '</td>' +
+            '<td><button type="button" class="btn-perigo btn-pequeno" data-excluir-pacote="' + p.id + '">Excluir</button></td></tr>';
+        }).join('') + '</tbody></table></div>'
+      : '<div class="vazio">Nenhum pacote ainda. Ao agendar, responda "Sim, pacote" para cadastrar.</div>';
+  }
+
+  function tabelaFat(mapa, nome) {
+    var linhas = Object.keys(mapa).map(function (k) {
+      return { nome: k, total: mapa[k].avulso + mapa[k].pacote, sessoes: mapa[k].sessoes };
+    }).filter(function (l) { return l.total || l.sessoes; })
+      .sort(function (a, b) { return b.total - a.total || b.sessoes - a.sessoes; });
+    if (!linhas.length) return '<div class="vazio">Nada neste mês.</div>';
+    return '<div class="tabela-rolagem"><table class="tabela"><thead><tr><th>' + nome + '</th><th class="num">Sessões</th>' +
+      '<th class="num">Faturamento</th></tr></thead><tbody>' + linhas.map(function (l) {
+        return '<tr><td>' + esc(l.nome) + '</td><td class="num">' + l.sessoes + '</td><td class="num">' + (l.total ? reais(l.total) : '—') + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+
+  function excluirPacote(id) {
+    var p = estado.pacotes.filter(function (x) { return x.id === id; })[0];
+    if (!p || !confirm('Excluir o pacote de ' + p.clienteNome + ' (' + p.procedimentos + ')? Os agendamentos dele continuam na agenda, mas ficam sem pacote.')) return;
+    servidor('excluirPacote', id).then(function () {
+      aviso('Pacote excluído.');
+      return recarregar();
+    }).catch(erro);
+  }
+
+  /* ---------------- Importar das observações ---------------- */
+
+  function abrirImportar() {
+    servidor('analisarObservacoes').then(function (r) {
+      estado.importar = r.linhas;
+      var uteis = r.linhas.filter(function (l) { return l.tipo !== 'Ignorar'; }).length;
+      $('#importar-resumo').textContent = r.linhas.length
+        ? 'Encontrei valores ou pacotes em ' + uteis + ' de ' + r.linhas.length + ' observações.' +
+          (r.semObservacao ? ' ' + r.semObservacao + ' agendamento(s) sem tipo e sem observação ficaram de fora.' : '')
+        : 'Nenhum agendamento sem tipo tem observação para ler.';
+      $('#importar-linhas').innerHTML = r.linhas.map(function (l, i) {
+        return '<tr data-i="' + i + '"><td>' + dataBr(l.data) + '</td><td>' + esc(l.clienteNome) +
+          (l.procedimento ? '<small>' + esc(l.procedimento) + '</small>' : '') + '</td>' +
+          '<td class="obs">' + esc(l.observacoes) + '</td>' +
+          '<td><select class="campo" name="tipo">' + ['Avulso', 'Pacote', 'Ignorar'].map(function (t) {
+            return '<option' + (t === l.tipo ? ' selected' : '') + '>' + t + '</option>';
+          }).join('') + '</select></td>' +
+          '<td><input class="campo" name="valor" inputmode="decimal" value="' + esc(valorCampo(l.valor)) + '"></td>' +
+          '<td class="centro"><input type="checkbox" name="novoPacote"' + (l.novoPacote ? ' checked' : '') + '></td>' +
+          '<td><input class="campo" name="sessoes" type="number" min="1" value="' + esc(l.sessoes) + '"></td></tr>';
+      }).join('');
+      $$('#importar-linhas tr').forEach(ajustarLinhaImportar);
+      $('#gravar-importar').disabled = !r.linhas.length;
+      $('#modal-importar').showModal();
+    }).catch(erro);
+  }
+
+  // Mostra só os campos que fazem sentido para o tipo escolhido na linha.
+  function ajustarLinhaImportar(tr) {
+    var tipo = tr.querySelector('[name=tipo]').value, novo = tr.querySelector('[name=novoPacote]').checked;
+    tr.classList.toggle('ignorada', tipo === 'Ignorar');
+    tr.querySelector('[name=valor]').style.visibility = tipo === 'Avulso' || (tipo === 'Pacote' && novo) ? '' : 'hidden';
+    tr.querySelector('[name=novoPacote]').style.visibility = tipo === 'Pacote' ? '' : 'hidden';
+    tr.querySelector('[name=sessoes]').style.visibility = tipo === 'Pacote' && novo ? '' : 'hidden';
+  }
+
+  function gravarImportar(ev) {
+    ev.preventDefault();
+    var f = ev.target;
+    var linhas = $$('#importar-linhas tr').map(function (tr) {
+      var l = estado.importar[+tr.dataset.i];
+      return { id: l.id, tipo: tr.querySelector('[name=tipo]').value, valor: tr.querySelector('[name=valor]').value,
+        novoPacote: tr.querySelector('[name=novoPacote]').checked, sessoes: tr.querySelector('[name=sessoes]').value };
+    }).filter(function (l) { return l.tipo !== 'Ignorar'; });
+    var falta = linhas.filter(function (l) {
+      return (l.tipo === 'Avulso' && !l.valor) || (l.tipo === 'Pacote' && l.novoPacote && (!l.valor || !(+l.sessoes >= 1)));
+    }).length;
+    if (falta) return erro(new Error(falta + ' linha(s) sem valor ou sem sessões. Preencha ou mude para Ignorar.'));
+    travar(f, true);
+    servidor('aplicarObservacoes', linhas).then(function (r) {
+      $('#modal-importar').close();
+      aviso('Gravado: ' + r.avulsos + ' avulso(s), ' + r.pacotes + ' pacote(s) novo(s) e ' + r.sessoes + ' sessão(ões) de pacote.' +
+        (r.semPacote.length ? ' Sem pacote anterior: ' + r.semPacote.join(', ') + '.' : ''));
+      return recarregar();
+    }).catch(erro).then(function () { travar(f, false); });
   }
 
   /* ---------------- Utilidades ---------------- */
@@ -435,10 +755,42 @@
   $('#form-agendamento').data.addEventListener('change', function () { preencherHorarios(); });
   $('#form-agendamento').duracao.addEventListener('change', function () { preencherHorarios(); });
   $('#add-proc').onclick = function () { adicionarProcedimento('', true); };
+  $$('#form-agendamento [name=tipo]').forEach(function (r) {
+    r.addEventListener('change', function () {
+      if (r.value === 'Pacote' && r.checked) carregarPacote(null, true);
+      atualizarTipo();
+    });
+  });
+  $('#form-agendamento').clienteId.addEventListener('change', function () { preencherPacotes(); atualizarTipo(); });
+  $('#form-agendamento').pacoteId.addEventListener('change', function () { carregarPacote(null, true); });
+  $('#form-agendamento').pacSessoes.addEventListener('input', atualizarInfoPacote);
+  $('#ano-ant').onclick = function () { estado.anoFat--; renderFaturamento(); };
+  $('#ano-prox').onclick = function () { estado.anoFat++; renderFaturamento(); };
+  $('#fat-grafico').addEventListener('click', function (ev) {
+    var c = ev.target.closest('.coluna');
+    if (c) { estado.mesFat = c.dataset.mes; renderFaturamento(); }
+  });
+  $('#fat-grafico').addEventListener('pointerover', function (ev) {
+    var c = ev.target.closest('.coluna'), dica = $('#dica-grafico');
+    if (!c) return;
+    dica.textContent = c.dataset.dica;
+    dica.classList.add('mostrar');
+  });
+  $('#fat-grafico').addEventListener('pointerleave', function () { $('#dica-grafico').classList.remove('mostrar'); });
+  $('#fat-pacotes').addEventListener('click', function (ev) {
+    var b = ev.target.closest('[data-excluir-pacote]');
+    if (b) excluirPacote(b.dataset.excluirPacote);
+  });
+  $('#importar-obs').onclick = abrirImportar;
+  $('#importar-linhas').addEventListener('change', function (ev) {
+    var tr = ev.target.closest('tr');
+    if (tr) ajustarLinhaImportar(tr);
+  });
+  $('#form-importar').addEventListener('submit', gravarImportar);
   $('#cliente-rapida').onclick = function () {
     var f = $('#form-agendamento');
-    estado.voltarParaAgendamento = { id: f.id.value, data: f.data.value, inicio: f.inicio.value, duracao: f.duracao.value,
-      procedimento: lerProcedimentos(), status: f.status.value, observacoes: f.observacoes.value };
+    estado.voltarParaAgendamento = lerFormAgendamento();
+    delete estado.voltarParaAgendamento.clienteId;
     $('#modal-agendamento').close();
     abrirCliente(null);
   };

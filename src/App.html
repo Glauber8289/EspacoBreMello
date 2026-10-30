@@ -265,7 +265,7 @@
   }
 
   // Lista os pacotes da cliente escolhida; sem escolha, sugere o último que ainda tem sessões.
-  function preencherPacotes(escolhido, rascunho) {
+  function preencherPacotes(escolhido, rascunho, trocarProcs) {
     var f = $('#form-agendamento');
     var lista = estado.pacotes.filter(function (p) { return p.clienteId === f.clienteId.value; })
       .sort(function (a, b) { return b.dataInicio.localeCompare(a.dataInicio); });
@@ -278,7 +278,7 @@
       escolhido = livre ? livre.id : '';
     }
     f.pacoteId.value = lista.some(function (p) { return p.id === escolhido; }) ? escolhido : '';
-    carregarPacote(rascunho, false);
+    carregarPacote(rascunho, trocarProcs);
   }
 
   function carregarPacote(rascunho, trocarProcs) {
@@ -288,7 +288,9 @@
     f.pacSessoes.value = dados ? dados.sessoes : '';
     f.pacValor.value = dados ? valorCampo(dados.valor) : '';
     f.pacRenovacao.value = dados ? dados.renovacao || '' : '';
-    if (p && trocarProcs && tipoEscolhido() === 'Pacote') definirProcedimentos(p.procedimentos);
+    definirProcedimentos(dados ? dados.procedimentos : '', '#lista-procs-pacote');
+    // Sessão nova sem procedimentos: começa com os do pacote, e dá para trocar só nesta semana.
+    if (p && trocarProcs && tipoEscolhido() === 'Pacote' && !lerProcedimentos()) definirProcedimentos(p.procedimentos);
     atualizarInfoPacote();
   }
 
@@ -314,7 +316,7 @@
     $('#campos-pacote').hidden = tipo !== 'Pacote';
     $('#campo-pacote').hidden = tipo !== 'Pacote' || f.pacoteId.options.length < 2;
     $('#campo-valor').hidden = tipo !== 'Avulso';
-    $('#rotulo-procs').textContent = tipo === 'Pacote' ? 'Procedimentos do pacote' : 'Procedimentos';
+    $('#rotulo-procs').textContent = tipo === 'Pacote' ? 'Procedimentos desta sessão' : 'Procedimentos';
   }
 
   function lerFormAgendamento() {
@@ -324,14 +326,16 @@
       tipo: tipoEscolhido(), valor: f.valor.value };
     if (dados.tipo === 'Pacote') {
       dados.pacoteId = f.pacoteId.value;
-      dados.pacote = { id: f.pacoteId.value, procedimentos: dados.procedimento, sessoes: f.pacSessoes.value,
+      dados.pacote = { id: f.pacoteId.value, procedimentos: lerProcedimentos('#lista-procs-pacote') || dados.procedimento, sessoes: f.pacSessoes.value,
         valor: f.pacValor.value, renovacao: f.pacRenovacao.value };
     }
     return dados;
   }
 
   // Vários procedimentos no mesmo agendamento ficam gravados juntos, separados por "; ".
-  function adicionarProcedimento(valor, focar) {
+  // A lista padrão é a da sessão (#lista-procs); o pacote tem a sua (#lista-procs-pacote).
+  function adicionarProcedimento(valor, focar, lista) {
+    lista = lista || '#lista-procs';
     var linha = document.createElement('div');
     linha.className = 'proc-linha';
     linha.innerHTML = '<input class="campo" list="procedimentos" autocomplete="off" placeholder="Escolha ou digite">' +
@@ -339,21 +343,22 @@
     linha.querySelector('input').value = valor || '';
     linha.querySelector('button').onclick = function () {
       linha.remove();
-      if (!$('#lista-procs').children.length) adicionarProcedimento('');
+      if (!$(lista).children.length) adicionarProcedimento('', false, lista);
     };
-    $('#lista-procs').appendChild(linha);
+    $(lista).appendChild(linha);
     if (focar) linha.querySelector('input').focus();
   }
 
-  function definirProcedimentos(texto) {
-    $('#lista-procs').innerHTML = '';
+  function definirProcedimentos(texto, lista) {
+    lista = lista || '#lista-procs';
+    $(lista).innerHTML = '';
     var itens = String(texto || '').split(';').map(function (p) { return p.trim(); }).filter(String);
     if (!itens.length) itens = [''];
-    itens.forEach(function (p) { adicionarProcedimento(p); });
+    itens.forEach(function (p) { adicionarProcedimento(p, false, lista); });
   }
 
-  function lerProcedimentos() {
-    return $$('#lista-procs input').map(function (i) { return i.value.replace(/;/g, ',').trim(); })
+  function lerProcedimentos(lista) {
+    return $$((lista || '#lista-procs') + ' input').map(function (i) { return i.value.replace(/;/g, ',').trim(); })
       .filter(String).join('; ');
   }
 
@@ -410,7 +415,8 @@
     if (!dados.inicio) return erro(new Error('Escolha um horário livre.'));
     if (!dados.tipo && estado.tipoObrigatorio) return erro(new Error('Responda se o atendimento é de pacote ou avulso.'));
     if (dados.tipo === 'Pacote') {
-      if (!dados.procedimento) return erro(new Error('Informe os procedimentos do pacote.'));
+      if (!dados.pacote.procedimentos) return erro(new Error('Informe os procedimentos do pacote.'));
+      if (!dados.procedimento) dados.procedimento = dados.pacote.procedimentos;
       if (!(+dados.pacote.sessoes >= 1)) return erro(new Error('Informe a quantidade de sessões do pacote.'));
       if (!dados.pacote.valor) return erro(new Error('Informe o valor do pacote.'));
     }
@@ -771,8 +777,14 @@
       atualizarTipo();
     });
   });
-  $('#form-agendamento').clienteId.addEventListener('change', function () { preencherPacotes(); atualizarTipo(); });
-  $('#form-agendamento').pacoteId.addEventListener('change', function () { carregarPacote(null, true); });
+  $('#form-agendamento').clienteId.addEventListener('change', function () { preencherPacotes(null, null, true); atualizarTipo(); });
+  $('#add-proc-pacote').onclick = function () { adicionarProcedimento('', true, '#lista-procs-pacote'); };
+  $('#form-agendamento').pacoteId.addEventListener('change', function () {
+    var f = $('#form-agendamento');
+    var p = estado.pacotes.filter(function (x) { return x.id === f.pacoteId.value; })[0];
+    if (p) definirProcedimentos(p.procedimentos);
+    carregarPacote(null, true);
+  });
   $('#form-agendamento').pacSessoes.addEventListener('input', atualizarInfoPacote);
   $('#ano-ant').onclick = function () { estado.anoFat--; renderFaturamento(); };
   $('#ano-prox').onclick = function () { estado.anoFat++; renderFaturamento(); };

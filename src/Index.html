@@ -153,18 +153,23 @@
         </div>
       </div>
       <label id="campo-pacote" hidden>Qual pacote<select class="campo" name="pacoteId"></select></label>
-      <div class="grupo-procs">
-        <span class="rotulo" id="rotulo-procs">Procedimentos</span>
-        <div id="lista-procs"></div>
-        <button type="button" class="btn-sec btn-pequeno" id="add-proc">+ Adicionar procedimento</button>
-      </div>
       <div id="campos-pacote" hidden>
+        <div class="grupo-procs">
+          <span class="rotulo">Procedimentos do pacote</span>
+          <div id="lista-procs-pacote"></div>
+          <button type="button" class="btn-sec btn-pequeno" id="add-proc-pacote">+ Adicionar procedimento</button>
+        </div>
         <div class="linha2">
           <label>Quantidade de sessões<input class="campo" name="pacSessoes" type="number" min="1" max="100" step="1"></label>
           <label>Valor do pacote (R$)<input class="campo" name="pacValor" inputmode="decimal" placeholder="0,00" autocomplete="off"></label>
         </div>
         <label>Data de renovação<input class="campo" name="pacRenovacao" type="date"></label>
         <p class="info-horario" id="info-pacote"></p>
+      </div>
+      <div class="grupo-procs">
+        <span class="rotulo" id="rotulo-procs">Procedimentos</span>
+        <div id="lista-procs"></div>
+        <button type="button" class="btn-sec btn-pequeno" id="add-proc">+ Adicionar procedimento</button>
       </div>
       <label id="campo-valor" hidden>Valor desta sessão (R$)<input class="campo" name="valor" inputmode="decimal" placeholder="0,00" autocomplete="off"></label>
       <label id="campo-status">Status

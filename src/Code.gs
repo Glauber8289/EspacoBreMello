@@ -293,7 +293,7 @@ function analisarObservacoes() {
       l.tipo = TIPO.PACOTE;
       var aberto = abertos[a.clienteId];
       var cheio = !aberto || aberto.usadas >= aberto.sessoes;
-      l.novoPacote = lido.sessaoAtual === 1 || (cheio && lido.sessaoAtual === 0);
+      l.novoPacote = !aberto || lido.sessaoAtual === 1 || (cheio && lido.sessaoAtual === 0);
       if (l.novoPacote) {
         abertos[a.clienteId] = aberto = { sessoes: +l.sessoes || 0, usadas: 0 };
       } else {

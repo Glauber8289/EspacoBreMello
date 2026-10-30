@@ -670,15 +670,22 @@
   function gravarImportar(ev) {
     ev.preventDefault();
     var f = ev.target;
+    var faltando = [];
     var linhas = $$('#importar-linhas tr').map(function (tr) {
       var l = estado.importar[+tr.dataset.i];
-      return { id: l.id, tipo: tr.querySelector('[name=tipo]').value, valor: tr.querySelector('[name=valor]').value,
+      var d = { id: l.id, tipo: tr.querySelector('[name=tipo]').value, valor: tr.querySelector('[name=valor]').value,
         novoPacote: tr.querySelector('[name=novoPacote]').checked, sessoes: tr.querySelector('[name=sessoes]').value };
+      var falta = (d.tipo === 'Avulso' && !d.valor) || (d.tipo === 'Pacote' && d.novoPacote && !(+d.sessoes >= 1));
+      tr.classList.toggle('falta', falta);
+      if (falta) faltando.push(tr);
+      return d;
     }).filter(function (l) { return l.tipo !== 'Ignorar'; });
-    var falta = linhas.filter(function (l) {
-      return (l.tipo === 'Avulso' && !l.valor) || (l.tipo === 'Pacote' && l.novoPacote && (!l.valor || !(+l.sessoes >= 1)));
-    }).length;
-    if (falta) return erro(new Error(falta + ' linha(s) sem valor ou sem sessões. Preencha ou mude para Ignorar.'));
+    if (faltando.length) {
+      faltando[0].scrollIntoView({ block: 'center' });
+      return erro(new Error(faltando.length + ' linha(s) marcadas em vermelho estão sem valor (avulso) ou sem sessões (pacote novo). ' +
+        'Preencha ou mude para Ignorar.'));
+    }
+    if (!linhas.length) return erro(new Error('Todas as linhas estão como Ignorar. Escolha Avulso ou Pacote nas que têm valor.'));
     travar(f, true);
     servidor('aplicarObservacoes', linhas).then(function (r) {
       $('#modal-importar').close();
@@ -699,6 +706,9 @@
   var timerAviso;
   function aviso(msg, ehErro) {
     var el = $('#aviso');
+    // Com uma janela aberta, o aviso precisa ficar dentro dela; senão fica escondido atrás.
+    var janela = document.querySelector('dialog[open]') || document.body;
+    if (el.parentNode !== janela) janela.appendChild(el);
     el.textContent = msg;
     el.classList.toggle('erro', !!ehErro);
     el.classList.add('mostrar');
